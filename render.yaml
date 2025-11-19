@@ -7,32 +7,4 @@ services:
     buildCommand: npm install && npm run build
     startCommand: npm run start
     healthCheckPath: /api/health
-    envVars:
-      - key: NODE_ENV
-        value: production
-      - key: DATABASE_URL
-        fromDatabase:
-          name: hospitality-pms-db
-          property: connectionString
-      - key: STRIPE_SECRET_KEY
-        sync: false
-      - key: STRIPE_PRICE_ID_MONTHLY
-        sync: false
-      - key: STRIPE_PRICE_ID_YEARLY
-        sync: false
-      - key: OPENAI_API_KEY
-        sync: false
-      - key: SESSION_SECRET
-        generateValue: true
-      - key: REPLIT_DB_URL
-        sync: false
-      - key: FRONTEND_URL
-        sync: false
-    autoDeploy: true
-
-databases:
-  - name: hospitality-pms-db
-    databaseName: hospitality_pms
-    plan: starter
-    region: oregon
-    postgresMajorVersion: 15
+ 
