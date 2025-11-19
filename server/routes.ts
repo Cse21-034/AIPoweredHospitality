@@ -1,6 +1,3 @@
-// Complete API routes for Hotel PMS
-// Following javascript_log_in_with_replit, javascript_stripe, and javascript_openai blueprints
-
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import Stripe from "stripe";
@@ -28,7 +25,6 @@ const openai = process.env.OPENAI_API_KEY
   ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
   : null;
 
-// Helper function to generate license key
 function generateLicenseKey(): string {
   const randomPart = randomBytes(8).toString("hex").toUpperCase();
   const checksum = randomBytes(2).toString("hex").toUpperCase();
@@ -36,12 +32,10 @@ function generateLicenseKey(): string {
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  // Auth middleware
   await setupAuth(app);
 
   // ========== AUTH ROUTES ==========
   
-  // Signup
   app.post("/api/auth/signup", async (req, res) => {
     try {
       const validatedData = signupSchema.parse(req.body);
@@ -61,7 +55,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       
       req.session.userId = user.id;
-      res.json({ user: { id: user.id, email: user.email, firstName: user.firstName, lastName: user.lastName, role: user.role } });
+      
+      //OX: Explicitly save session before responding
+      req.session.save((err) => {
+        if (err) {
+          console.error("Session save error:", err);
+          return res.status(500).json({ message: "Failed to create session" });
+        }
+        res.json({ user: { id: user.id, email: user.email, firstName: user.firstName, lastName: user.lastName, role: user.role } });
+      });
     } catch (error: any) {
       console.error("Error during signup:", error);
       if (error.name === "ZodError") {
@@ -71,7 +73,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  // Login
   app.post("/api/auth/login", async (req, res) => {
     try {
       const validatedData = loginSchema.parse(req.body);
@@ -87,7 +88,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       req.session.userId = user.id;
-      res.json({ user: { id: user.id, email: user.email, firstName: user.firstName, lastName: user.lastName, role: user.role } });
+
+      //OX: Explicitly save session before responding to prevent race conditions
+      req.session.save((err) => {
+        if (err) {
+          console.error("Session save error:", err);
+          return res.status(500).json({ message: "Failed to save session" });
+        }
+        res.json({ user: { id: user.id, email: user.email, firstName: user.firstName, lastName: user.lastName, role: user.role } });
+      });
     } catch (error: any) {
       console.error("Error during login:", error);
       if (error.name === "ZodError") {
@@ -97,17 +106,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  // Logout
   app.post("/api/auth/logout", (req, res) => {
     req.session.destroy((err) => {
       if (err) {
         return res.status(500).json({ message: "Failed to log out" });
       }
+      res.clearCookie("hospitality.sid"); // Explicitly clear cookie
       res.json({ message: "Logged out successfully" });
     });
   });
   
-  // Get current user
   app.get("/api/auth/user", isAuthenticated, async (req, res) => {
     try {
       const userId = req.session.userId!;
@@ -124,17 +132,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ========== LICENSE & SUBSCRIPTION ROUTES ==========
   
-  // Get current license
   app.get("/api/license/current", isAuthenticated, async (req, res) => {
     try {
       const license = await storage.getActiveLicense();
       if (!license) {
-        // Create trial license on first access
         const newLicense = await storage.createLicense({
           licenseKey: generateLicenseKey(),
           subscriptionStatus: "trial",
           activatedAt: new Date(),
-          expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000), // 3 months
+          expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
           trialEndsAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
           featuresUnlocked: {
             ai: true,
@@ -151,7 +157,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Create subscription (Stripe)
   app.post("/api/subscription/create", isAuthenticated, async (req: any, res) => {
     try {
       if (!stripe) {
@@ -159,7 +164,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const { plan } = req.body;
-      const userId = req.user.claims.sub;
+      const userId = req.session.userId;
       const user = await storage.getUser(userId);
 
       if (!user) {
@@ -168,27 +173,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       let customerId = user.stripeCustomerId;
 
-      // Create Stripe customer if doesn't exist
       if (!customerId) {
         const customer = await stripe.customers.create({
           email: user.email || undefined,
-          name: `${user.firstName} ${user.lastName}`,
+          name: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
         });
         customerId = customer.id;
-        await storage.upsertUser({ ...user, stripeCustomerId: customerId });
+        await storage.updateUser(user.id, { stripeCustomerId: customerId });
       }
 
-      // Create subscription
       const priceId = plan === "yearly" ? process.env.STRIPE_PRICE_ID_YEARLY : process.env.STRIPE_PRICE_ID_MONTHLY;
       
+      if (!priceId) {
+        return res.status(400).json({ message: "Invalid subscription plan" });
+      }
+
       const subscription = await stripe.subscriptions.create({
         customer: customerId,
-        items: [{ price: priceId || "price_placeholder" }],
+        items: [{ price: priceId }],
         payment_behavior: "default_incomplete",
+        payment_settings: { save_default_payment_method: "on_subscription" },
         expand: ["latest_invoice.payment_intent"],
       });
 
-      // Update license
       const license = await storage.getActiveLicense();
       if (license) {
         await storage.updateLicense(license.id, {
@@ -215,6 +222,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const properties = await storage.getProperties();
       res.json(properties);
     } catch (error: any) {
+      console.error("Error fetching properties:", error);
       res.status(500).json({ message: error.message });
     }
   });
@@ -223,9 +231,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const data = insertPropertySchema.parse(req.body);
       const property = await storage.createProperty(data);
+      res.status(201).json(property);
+    } catch (error: any) {
+      console.error("Error creating property:", error);
+      if (error.name === "ZodError") {
+        return res.status(400).json({ message: error.errors[0]?.message || "Invalid input" });
+      }
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/properties/:id", isAuthenticated, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const property = await storage.getProperty(id);
+      if (!property) {
+        return res.status(404).json({ message: "Property not found" });
+      }
       res.json(property);
     } catch (error: any) {
+      console.error("Error fetching property:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.put("/api/properties/:id", isAuthenticated, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const data = insertPropertySchema.partial().parse(req.body);
+      const property = await storage.updateProperty(id, data);
+      if (!property) {
+        return res.status(404).json({ message: "Property not found" });
+      }
+      res.json(property);
+    } catch (error: any) {
+      console.error("Error updating property:", error);
+      if (error.name === "ZodError") {
+        return res.status(400).json({ message: error.errors[0]?.message || "Invalid input" });
+      }
       res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/properties/:id", isAuthenticated, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const success = await storage.deleteProperty(id);
+      if (!success) {
+        return res.status(404).json({ message: "Property not found" });
+      }
+      res.json({ message: "Property deleted successfully" });
+    } catch (error: any) {
+      console.error("Error deleting property:", error);
+      res.status(500).json({ message: error.message });
     }
   });
 
@@ -237,6 +295,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const roomTypes = await storage.getRoomTypes(propertyId);
       res.json(roomTypes);
     } catch (error: any) {
+      console.error("Error fetching room types:", error);
       res.status(500).json({ message: error.message });
     }
   });
@@ -245,9 +304,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const data = insertRoomTypeSchema.parse(req.body);
       const roomType = await storage.createRoomType(data);
+      res.status(201).json(roomType);
+    } catch (error: any) {
+      console.error("Error creating room type:", error);
+      if (error.name === "ZodError") {
+        return res.status(400).json({ message: error.errors[0]?.message || "Invalid input" });
+      }
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/room-types/:id", isAuthenticated, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const roomType = await storage.getRoomType(id);
+      if (!roomType) {
+        return res.status(404).json({ message: "Room type not found" });
+      }
       res.json(roomType);
     } catch (error: any) {
+      console.error("Error fetching room type:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.put("/api/room-types/:id", isAuthenticated, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const data = insertRoomTypeSchema.partial().parse(req.body);
+      const roomType = await storage.updateRoomType(id, data);
+      if (!roomType) {
+        return res.status(404).json({ message: "Room type not found" });
+      }
+      res.json(roomType);
+    } catch (error: any) {
+      console.error("Error updating room type:", error);
+      if (error.name === "ZodError") {
+        return res.status(400).json({ message: error.errors[0]?.message || "Invalid input" });
+      }
       res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/room-types/:id", isAuthenticated, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const success = await storage.deleteRoomType(id);
+      if (!success) {
+        return res.status(404).json({ message: "Room type not found" });
+      }
+      res.json({ message: "Room type deleted successfully" });
+    } catch (error: any) {
+      console.error("Error deleting room type:", error);
+      res.status(500).json({ message: error.message });
     }
   });
 
@@ -259,6 +368,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const rooms = await storage.getRooms(propertyId);
       res.json(rooms);
     } catch (error: any) {
+      console.error("Error fetching rooms:", error);
       res.status(500).json({ message: error.message });
     }
   });
@@ -267,9 +377,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const data = insertRoomSchema.parse(req.body);
       const room = await storage.createRoom(data);
+      res.status(201).json(room);
+    } catch (error: any) {
+      console.error("Error creating room:", error);
+      if (error.name === "ZodError") {
+        return res.status(400).json({ message: error.errors[0]?.message || "Invalid input" });
+      }
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/rooms/:id", isAuthenticated, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const room = await storage.getRoom(id);
+      if (!room) {
+        return res.status(404).json({ message: "Room not found" });
+      }
       res.json(room);
     } catch (error: any) {
+      console.error("Error fetching room:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.put("/api/rooms/:id", isAuthenticated, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const data = insertRoomSchema.partial().parse(req.body);
+      const room = await storage.updateRoom(id, data);
+      if (!room) {
+        return res.status(404).json({ message: "Room not found" });
+      }
+      res.json(room);
+    } catch (error: any) {
+      console.error("Error updating room:", error);
+      if (error.name === "ZodError") {
+        return res.status(400).json({ message: error.errors[0]?.message || "Invalid input" });
+      }
       res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/rooms/:id", isAuthenticated, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const success = await storage.deleteRoom(id);
+      if (!success) {
+        return res.status(404).json({ message: "Room not found" });
+      }
+      res.json({ message: "Room deleted successfully" });
+    } catch (error: any) {
+      console.error("Error deleting room:", error);
+      res.status(500).json({ message: error.message });
     }
   });
 
@@ -280,6 +440,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const guests = await storage.getGuests();
       res.json(guests);
     } catch (error: any) {
+      console.error("Error fetching guests:", error);
       res.status(500).json({ message: error.message });
     }
   });
@@ -288,9 +449,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const data = insertGuestSchema.parse(req.body);
       const guest = await storage.createGuest(data);
+      res.status(201).json(guest);
+    } catch (error: any) {
+      console.error("Error creating guest:", error);
+      if (error.name === "ZodError") {
+        return res.status(400).json({ message: error.errors[0]?.message || "Invalid input" });
+      }
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/guests/:id", isAuthenticated, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const guest = await storage.getGuest(id);
+      if (!guest) {
+        return res.status(404).json({ message: "Guest not found" });
+      }
       res.json(guest);
     } catch (error: any) {
+      console.error("Error fetching guest:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.put("/api/guests/:id", isAuthenticated, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const data = insertGuestSchema.partial().parse(req.body);
+      const guest = await storage.updateGuest(id, data);
+      if (!guest) {
+        return res.status(404).json({ message: "Guest not found" });
+      }
+      res.json(guest);
+    } catch (error: any) {
+      console.error("Error updating guest:", error);
+      if (error.name === "ZodError") {
+        return res.status(400).json({ message: error.errors[0]?.message || "Invalid input" });
+      }
       res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/guests/:id", isAuthenticated, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const success = await storage.deleteGuest(id);
+      if (!success) {
+        return res.status(404).json({ message: "Guest not found" });
+      }
+      res.json({ message: "Guest deleted successfully" });
+    } catch (error: any) {
+      console.error("Error deleting guest:", error);
+      res.status(500).json({ message: error.message });
     }
   });
 
@@ -302,6 +513,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const reservations = await storage.getReservations(propertyId);
       res.json(reservations);
     } catch (error: any) {
+      console.error("Error fetching reservations:", error);
       res.status(500).json({ message: error.message });
     }
   });
@@ -310,9 +522,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const data = insertReservationSchema.parse(req.body);
       const reservation = await storage.createReservation(data);
+      res.status(201).json(reservation);
+    } catch (error: any) {
+      console.error("Error creating reservation:", error);
+      if (error.name === "ZodError") {
+        return res.status(400).json({ message: error.errors[0]?.message || "Invalid input" });
+      }
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/reservations/:id", isAuthenticated, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const reservation = await storage.getReservation(id);
+      if (!reservation) {
+        return res.status(404).json({ message: "Reservation not found" });
+      }
       res.json(reservation);
     } catch (error: any) {
+      console.error("Error fetching reservation:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.put("/api/reservations/:id", isAuthenticated, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const data = insertReservationSchema.partial().parse(req.body);
+      const reservation = await storage.updateReservation(id, data);
+      if (!reservation) {
+        return res.status(404).json({ message: "Reservation not found" });
+      }
+      res.json(reservation);
+    } catch (error: any) {
+      console.error("Error updating reservation:", error);
+      if (error.name === "ZodError") {
+        return res.status(400).json({ message: error.errors[0]?.message || "Invalid input" });
+      }
       res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/reservations/:id", isAuthenticated, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const success = await storage.deleteReservation(id);
+      if (!success) {
+        return res.status(404).json({ message: "Reservation not found" });
+      }
+      res.json({ message: "Reservation deleted successfully" });
+    } catch (error: any) {
+      console.error("Error deleting reservation:", error);
+      res.status(500).json({ message: error.message });
     }
   });
 
@@ -324,6 +586,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const requests = await storage.getRoomServiceRequests(propertyId);
       res.json(requests);
     } catch (error: any) {
+      console.error("Error fetching room service requests:", error);
       res.status(500).json({ message: error.message });
     }
   });
@@ -332,9 +595,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const data = insertRoomServiceRequestSchema.parse(req.body);
       const request = await storage.createRoomServiceRequest(data);
+      res.status(201).json(request);
+    } catch (error: any) {
+      console.error("Error creating room service request:", error);
+      if (error.name === "ZodError") {
+        return res.status(400).json({ message: error.errors[0]?.message || "Invalid input" });
+      }
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/room-service/:id", isAuthenticated, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const request = await storage.getRoomServiceRequest(id);
+      if (!request) {
+        return res.status(404).json({ message: "Room service request not found" });
+      }
       res.json(request);
     } catch (error: any) {
-      res.status(400).json({ message: error.message });
+      console.error("Error fetching room service request:", error);
+      res.status(500).json({ message: error.message });
     }
   });
 
@@ -342,9 +623,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { id } = req.params;
       const { status } = req.body;
+      
+      if (!status || !["pending", "in-progress", "completed", "cancelled"].includes(status)) {
+        return res.status(400).json({ message: "Valid status is required" });
+      }
+      
       const request = await storage.updateRoomServiceRequest(id, { status });
+      if (!request) {
+        return res.status(404).json({ message: "Room service request not found" });
+      }
       res.json(request);
     } catch (error: any) {
+      console.error("Error updating room service request:", error);
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/room-service/:id", isAuthenticated, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const success = await storage.deleteRoomServiceRequest(id);
+      if (!success) {
+        return res.status(404).json({ message: "Room service request not found" });
+      }
+      res.json({ message: "Room service request deleted successfully" });
+    } catch (error: any) {
+      console.error("Error deleting room service request:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ========== RATE PLAN ROUTES ==========
+  
+  app.get("/api/rate-plans", isAuthenticated, async (req, res) => {
+    try {
+      const propertyId = req.query.propertyId as string;
+      const ratePlans = await storage.getRatePlans(propertyId);
+      res.json(ratePlans);
+    } catch (error: any) {
+      console.error("Error fetching rate plans:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/rate-plans", isAuthenticated, async (req, res) => {
+    try {
+      const data = insertRatePlanSchema.parse(req.body);
+      const ratePlan = await storage.createRatePlan(data);
+      res.status(201).json(ratePlan);
+    } catch (error: any) {
+      console.error("Error creating rate plan:", error);
+      if (error.name === "ZodError") {
+        return res.status(400).json({ message: error.errors[0]?.message || "Invalid input" });
+      }
       res.status(400).json({ message: error.message });
     }
   });
@@ -353,7 +684,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   app.get("/api/dashboard/stats", isAuthenticated, async (req, res) => {
     try {
-      // Get first property for demo
       const properties = await storage.getProperties();
       const propertyId = properties[0]?.id;
       
@@ -365,19 +695,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
           totalRevenue: 0,
           pendingRoomService: 0,
           availableRooms: 0,
+          totalRooms: 0,
+          occupancyRate: 0,
         });
       }
 
       const stats = await storage.getDashboardStats(propertyId);
       res.json(stats);
     } catch (error: any) {
+      console.error("Error fetching dashboard stats:", error);
       res.status(500).json({ message: error.message });
     }
   });
 
   // ========== AI ROUTES (License-gated) ==========
   
-  // AI Demand Forecasting
   app.post("/api/ai/forecast", isAuthenticated, async (req, res) => {
     try {
       if (!openai) {
@@ -391,19 +723,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const { propertyId, roomTypeId, days = 30 } = req.body;
 
-      // Get historical data for forecasting
       const reservations = await storage.getReservations(propertyId);
       
-      // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
-      const prompt = `Based on hotel reservation data, forecast demand for the next ${days} days. Return JSON with daily predictions including occupancy percentage and confidence level.`;
+      const prompt = `As a hotel revenue management AI, analyze this reservation data and provide demand forecasting for the next ${days} days. Consider seasonal trends, day-of-week patterns, and historical occupancy. Return JSON with:
+      - dailyPredictions: array of { date: string, predictedOccupancy: number, confidence: number, recommendedAction: string }
+      - summary: { averageOccupancy: number, peakDays: array, lowDays: array, recommendations: array }`;
       
       const response = await openai.chat.completions.create({
         model: "gpt-5",
         messages: [
-          { role: "system", content: "You are an AI assistant specialized in hotel revenue management and demand forecasting." },
-          { role: "user", content: prompt }
+          { 
+            role: "system", 
+            content: "You are an AI assistant specialized in hotel revenue management and demand forecasting. Provide accurate, data-driven predictions in JSON format." 
+          },
+          { 
+            role: "user", 
+            content: prompt 
+          }
         ],
         response_format: { type: "json_object" },
+        max_tokens: 2000,
       });
 
       const forecast = JSON.parse(response.choices[0].message.content || "{}");
@@ -414,7 +753,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // AI Dynamic Pricing
   app.post("/api/ai/pricing", isAuthenticated, async (req, res) => {
     try {
       if (!openai) {
@@ -426,18 +764,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Active subscription required for AI features" });
       }
 
-      const { propertyId, roomTypeId, currentPrice, occupancy, date } = req.body;
+      const { propertyId, roomTypeId, currentPrice, occupancy, date, competitors } = req.body;
 
-      // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
-      const prompt = `As a revenue manager, recommend an optimal room price. Current price: $${currentPrice}, Current occupancy: ${occupancy}%, Date: ${date}. Return JSON with recommendedPrice, reasoning, and confidence.`;
+      const prompt = `As a revenue management expert, recommend optimal room pricing. 
+      Current price: $${currentPrice}, Current occupancy: ${occupancy}%, Date: ${date}
+      ${competitors ? `Competitor prices: ${JSON.stringify(competitors)}` : ''}
+      
+      Return JSON with:
+      - recommendedPrice: number
+      - priceChange: number (percentage)
+      - reasoning: string
+      - confidence: number (0-100)
+      - factors: array of influencing factors
+      - riskAssessment: string`;
       
       const response = await openai.chat.completions.create({
         model: "gpt-5",
         messages: [
-          { role: "system", content: "You are an AI revenue management expert for hotels." },
-          { role: "user", content: prompt }
+          { 
+            role: "system", 
+            content: "You are an AI revenue management expert for hotels. Provide strategic pricing recommendations based on market conditions, demand, and competitive landscape." 
+          },
+          { 
+            role: "user", 
+            content: prompt 
+          }
         ],
         response_format: { type: "json_object" },
+        max_tokens: 1500,
       });
 
       const pricing = JSON.parse(response.choices[0].message.content || "{}");
@@ -446,6 +800,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Error generating pricing:", error);
       res.status(500).json({ message: error.message });
     }
+  });
+
+  // ========== HEALTH CHECK ==========
+  
+  app.get("/api/health", (req, res) => {
+    res.json({ 
+      status: "ok", 
+      timestamp: new Date().toISOString(),
+      services: {
+        database: "connected",
+        stripe: stripe ? "configured" : "not configured",
+        openai: openai ? "configured" : "not configured"
+      }
+    });
   });
 
   const httpServer = createServer(app);
