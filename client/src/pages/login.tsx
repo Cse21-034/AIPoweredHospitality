@@ -25,10 +25,7 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
-      const response = await apiRequest("/api/auth/login", {
-        method: "POST",
-        body: JSON.stringify(formData),
-      });
+      const response = await apiRequest("POST", "/api/auth/login", formData);
 
       if (!response.ok) {
         const error = await response.json();

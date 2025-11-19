@@ -46,14 +46,11 @@ export default function SignupPage() {
 
     setIsLoading(true);
     try {
-      const response = await apiRequest("/api/auth/signup", {
-        method: "POST",
-        body: JSON.stringify({
-          email: formData.email,
-          password: formData.password,
-          firstName: formData.firstName,
-          lastName: formData.lastName,
-        }),
+      const response = await apiRequest("POST", "/api/auth/signup", {
+        email: formData.email,
+        password: formData.password,
+        firstName: formData.firstName,
+        lastName: formData.lastName,
       });
 
       if (!response.ok) {

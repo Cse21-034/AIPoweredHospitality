@@ -1,8 +1,11 @@
+import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Building2, Calendar, DollarSign, Bot, TrendingUp, Users, ShieldCheck } from "lucide-react";
 
 export default function Landing() {
+  const [, setLocation] = useLocation();
+
   return (
     <div className="min-h-screen bg-background">
       {/* Hero Section */}
@@ -18,7 +21,7 @@ export default function Landing() {
             <div className="mt-10 flex items-center justify-center gap-4">
               <Button 
                 size="lg" 
-                onClick={() => window.location.href = "/api/login"}
+                onClick={() => setLocation("/signup")}
                 data-testid="button-get-started"
                 className="hover-elevate active-elevate-2"
               >
@@ -27,11 +30,11 @@ export default function Landing() {
               <Button 
                 size="lg" 
                 variant="outline"
-                onClick={() => window.location.href = "#features"}
-                data-testid="button-learn-more"
+                onClick={() => setLocation("/login")}
+                data-testid="button-login"
                 className="hover-elevate active-elevate-2"
               >
-                Learn More
+                Log In
               </Button>
             </div>
           </div>
