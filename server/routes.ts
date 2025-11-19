@@ -18,18 +18,13 @@ import {
   insertRatePlanSchema,
 } from "@shared/schema";
 
-if (!process.env.STRIPE_SECRET_KEY) {
-  throw new Error("Missing required Stripe secret: STRIPE_SECRET_KEY");
-}
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-  apiVersion: "2023-10-16",
-});
+const stripe = process.env.STRIPE_SECRET_KEY 
+  ? new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: "2025-10-29.clover" })
+  : null;
 
-if (!process.env.OPENAI_API_KEY) {
-  throw new Error("Missing required OpenAI secret: OPENAI_API_KEY");
-}
-// the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const openai = process.env.OPENAI_API_KEY
+  ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  : null;
 
 // Helper function to generate license key
 function generateLicenseKey(): string {
@@ -86,6 +81,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Create subscription (Stripe)
   app.post("/api/subscription/create", isAuthenticated, async (req: any, res) => {
     try {
+      if (!stripe) {
+        return res.status(503).json({ message: "Stripe is not configured. Please add STRIPE_SECRET_KEY to environment variables." });
+      }
+
       const { plan } = req.body;
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
@@ -308,6 +307,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // AI Demand Forecasting
   app.post("/api/ai/forecast", isAuthenticated, async (req, res) => {
     try {
+      if (!openai) {
+        return res.status(503).json({ message: "OpenAI is not configured. Please add OPENAI_API_KEY to environment variables." });
+      }
+
       const license = await storage.getActiveLicense();
       if (!license || (license.subscriptionStatus !== "active" && license.subscriptionStatus !== "trial")) {
         return res.status(403).json({ message: "Active subscription required for AI features" });
@@ -341,6 +344,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // AI Dynamic Pricing
   app.post("/api/ai/pricing", isAuthenticated, async (req, res) => {
     try {
+      if (!openai) {
+        return res.status(503).json({ message: "OpenAI is not configured. Please add OPENAI_API_KEY to environment variables." });
+      }
+
       const license = await storage.getActiveLicense();
       if (!license || (license.subscriptionStatus !== "active" && license.subscriptionStatus !== "trial")) {
         return res.status(403).json({ message: "Active subscription required for AI features" });

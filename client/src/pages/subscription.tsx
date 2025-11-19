@@ -13,10 +13,9 @@ import { loadStripe } from "@stripe/stripe-js";
 import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import { apiRequest } from "@/lib/queryClient";
 
-if (!import.meta.env.VITE_STRIPE_PUBLIC_KEY) {
-  throw new Error("Missing VITE_STRIPE_PUBLIC_KEY");
-}
-const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY);
+const stripePromise = import.meta.env.VITE_STRIPE_PUBLIC_KEY 
+  ? loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY)
+  : null;
 
 function SubscribeForm({ onSuccess }: { onSuccess: () => void }) {
   const stripe = useStripe();
@@ -219,6 +218,17 @@ export default function Subscription() {
       {/* Subscription Plans */}
       {(!isActive || isExpired) && (
         <div className="space-y-4">
+          {!stripePromise && (
+            <div className="bg-amber-500/10 border border-amber-500 rounded-lg p-4 flex items-start gap-3">
+              <AlertCircle className="h-5 w-5 text-amber-500 mt-0.5" />
+              <div>
+                <p className="font-medium text-amber-500">Stripe Not Configured</p>
+                <p className="text-sm text-amber-500/90 mt-1">
+                  Stripe payment processing is not set up. Add VITE_STRIPE_PUBLIC_KEY and STRIPE_SECRET_KEY to enable subscriptions.
+                </p>
+              </div>
+            </div>
+          )}
           <h2 className="text-2xl font-semibold">Subscribe Now</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl">
             <Card className="hover-elevate" data-testid="card-plan-monthly">
@@ -302,7 +312,7 @@ export default function Subscription() {
           </div>
 
           {/* Payment Form */}
-          {clientSecret && selectedPlan && (
+          {clientSecret && selectedPlan && stripePromise && (
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
