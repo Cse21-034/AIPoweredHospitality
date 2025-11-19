@@ -63,12 +63,19 @@ app.use((req, res, next) => {
 
   const server = await registerRoutes(app);
 
-  app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
 
+    // Check if headers have already been sent. If so, just log and return.
+    if (res.headersSent) {
+      console.error("Error after headers sent:", err);
+      return;
+    }
+    
     res.status(status).json({ message });
-    throw err;
+    // DANGER: Removed 'throw err;' - which was causing the headers sent error
+    console.error("Unhandled API Error:", err);
   });
 
   // importantly only setup vite in development and after
