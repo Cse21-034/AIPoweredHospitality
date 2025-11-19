@@ -38,11 +38,11 @@ This guide explains how to deploy your Hospitality PMS SaaS application to Verce
 
 After deployment, add these environment variables in Render dashboard:
 
-#### Required Variables:
+#### Required Variables (MUST be set before first deployment):
+- `FRONTEND_URL` - **CRITICAL**: Your Vercel frontend URL (e.g., https://your-app.vercel.app) - Required for CORS to work
 - `STRIPE_SECRET_KEY` - Your Stripe secret key (sk_live_...)
 - `STRIPE_PRICE_ID_MONTHLY` - Your monthly subscription price ID
 - `STRIPE_PRICE_ID_YEARLY` - Your yearly subscription price ID
-- `FRONTEND_URL` - Your Vercel frontend URL (e.g., https://your-app.vercel.app)
 
 #### Optional Variables:
 - `OPENAI_API_KEY` - Your OpenAI API key (for AI features)
