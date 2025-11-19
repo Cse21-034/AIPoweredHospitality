@@ -1,8 +1,18 @@
 import express, { type Request, Response, NextFunction } from "express";
+import cors from "cors";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 
 const app = express();
+
+const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5000";
+
+app.use(cors({
+  origin: [FRONTEND_URL, "http://localhost:5173", "http://localhost:5000"],
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+}));
 
 declare module 'http' {
   interface IncomingMessage {
@@ -47,6 +57,10 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  app.get("/api/health", (_req, res) => {
+    res.status(200).json({ status: "ok", timestamp: new Date().toISOString() });
+  });
+
   const server = await registerRoutes(app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
