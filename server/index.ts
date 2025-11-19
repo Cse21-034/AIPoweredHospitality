@@ -5,20 +5,46 @@ import { setupVite, serveStatic, log } from "./vite";
 
 const app = express();
 
+// CRITICAL FIX: Properly configure CORS for production
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5000";
+const isDevelopment = process.env.NODE_ENV === "development";
+
+// Parse frontend URL to get origin
+const frontendOrigin = FRONTEND_URL.startsWith("http") 
+  ? FRONTEND_URL 
+  : `https://${FRONTEND_URL}`;
+
+const allowedOrigins = isDevelopment
+  ? ["http://localhost:5173", "http://localhost:5000", frontendOrigin]
+  : [frontendOrigin];
 
 app.use(cors({
-  origin: [FRONTEND_URL, "http://localhost:5173", "http://localhost:5000"],
-  credentials: true,
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      log(`Blocked CORS request from origin: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true, // CRITICAL: Enable credentials (cookies)
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
+  exposedHeaders: ["Set-Cookie"],
 }));
+
+// CRITICAL: Handle preflight requests
+app.options("*", cors());
 
 declare module 'http' {
   interface IncomingMessage {
     rawBody: unknown
   }
 }
+
 app.use(express.json({
   verify: (req, _res, buf) => {
     req.rawBody = buf;
@@ -63,34 +89,25 @@ app.use((req, res, next) => {
 
   const server = await registerRoutes(app);
 
-app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+  app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
 
-    // Check if headers have already been sent. If so, just log and return.
     if (res.headersSent) {
       console.error("Error after headers sent:", err);
       return;
     }
     
     res.status(status).json({ message });
-    // DANGER: Removed 'throw err;' - which was causing the headers sent error
     console.error("Unhandled API Error:", err);
   });
 
-  // importantly only setup vite in development and after
-  // setting up all the other routes so the catch-all route
-  // doesn't interfere with the other routes
   if (app.get("env") === "development") {
     await setupVite(app, server);
   } else {
     serveStatic(app);
   }
 
-  // ALWAYS serve the app on the port specified in the environment variable PORT
-  // Other ports are firewalled. Default to 5000 if not specified.
-  // this serves both the API and the client.
-  // It is the only port that is not firewalled.
   const port = parseInt(process.env.PORT || '5000', 10);
   server.listen({
     port,
@@ -98,5 +115,7 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     reusePort: true,
   }, () => {
     log(`serving on port ${port}`);
+    log(`CORS allowed origins: ${allowedOrigins.join(", ")}`);
+    log(`Frontend URL: ${frontendOrigin}`);
   });
 })();
