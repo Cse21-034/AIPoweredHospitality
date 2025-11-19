@@ -503,6 +503,19 @@ export const insertOtaConnectionSchema = createInsertSchema(otaConnections).omit
   updatedAt: true,
 });
 
+// Auth schemas
+export const signupSchema = z.object({
+  email: z.string().email("Invalid email address"),
+  password: z.string().min(8, "Password must be at least 8 characters long"),
+  firstName: z.string().optional(),
+  lastName: z.string().optional(),
+});
+
+export const loginSchema = z.object({
+  email: z.string().email("Invalid email address"),
+  password: z.string().min(1, "Password is required"),
+});
+
 // Export types
 export type UpsertUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;

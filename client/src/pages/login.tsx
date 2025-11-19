@@ -1,42 +1,39 @@
-import { useState } from "react";
 import { useLocation } from "wouter";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { loginSchema } from "@shared/schema";
+
+type LoginFormData = z.infer<typeof loginSchema>;
 
 export default function LoginPage() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const [isLoading, setIsLoading] = useState(false);
-  const [formData, setFormData] = useState({
-    email: "",
-    password: "",
+
+  const form = useForm<LoginFormData>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: {
+      email: "",
+      password: "",
+    },
   });
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-
+  const onSubmit = async (data: LoginFormData) => {
     try {
-      const response = await apiRequest("POST", "/api/auth/login", formData);
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || "Failed to log in");
-      }
+      await apiRequest("POST", "/api/auth/login", data);
 
       toast({
         title: "Success",
         description: "Logged in successfully!",
       });
       
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
       setLocation("/");
     } catch (error: any) {
       toast({
@@ -44,8 +41,6 @@ export default function LoginPage() {
         description: error.message || "Failed to log in",
         variant: "destructive",
       });
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -59,56 +54,68 @@ export default function LoginPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              <FormField
+                control={form.control}
                 name="email"
-                type="email"
-                placeholder="you@example.com"
-                value={formData.email}
-                onChange={handleChange}
-                required
-                data-testid="input-email"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Email</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="email"
+                        placeholder="you@example.com"
+                        data-testid="input-email"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
-            </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
+              <FormField
+                control={form.control}
                 name="password"
-                type="password"
-                placeholder="Enter your password"
-                value={formData.password}
-                onChange={handleChange}
-                required
-                data-testid="input-password"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Password</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="password"
+                        placeholder="Enter your password"
+                        data-testid="input-password"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
-            </div>
 
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={isLoading}
-              data-testid="button-login"
-            >
-              {isLoading ? "Logging In..." : "Log In"}
-            </Button>
-
-            <div className="text-center text-sm">
-              <span className="text-muted-foreground">Don't have an account? </span>
-              <button
-                type="button"
-                onClick={() => setLocation("/signup")}
-                className="text-primary hover:underline"
-                data-testid="link-signup"
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={form.formState.isSubmitting}
+                data-testid="button-login"
               >
-                Sign up
-              </button>
-            </div>
-          </form>
+                {form.formState.isSubmitting ? "Logging In..." : "Log In"}
+              </Button>
+
+              <div className="text-center text-sm">
+                <span className="text-muted-foreground">Don't have an account? </span>
+                <button
+                  type="button"
+                  onClick={() => setLocation("/signup")}
+                  className="text-primary hover:underline"
+                  data-testid="link-signup"
+                >
+                  Sign up
+                </button>
+              </div>
+            </form>
+          </Form>
         </CardContent>
       </Card>
     </div>

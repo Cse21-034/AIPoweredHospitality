@@ -1,68 +1,54 @@
-import { useState } from "react";
 import { useLocation } from "wouter";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { signupSchema } from "@shared/schema";
+
+const signupFormSchema = signupSchema.extend({
+  confirmPassword: z.string().min(1, "Please confirm your password"),
+}).refine((data) => data.password === data.confirmPassword, {
+  message: "Passwords do not match",
+  path: ["confirmPassword"],
+});
+
+type SignupFormData = z.infer<typeof signupFormSchema>;
 
 export default function SignupPage() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const [isLoading, setIsLoading] = useState(false);
-  const [formData, setFormData] = useState({
-    email: "",
-    password: "",
-    confirmPassword: "",
-    firstName: "",
-    lastName: "",
+
+  const form = useForm<SignupFormData>({
+    resolver: zodResolver(signupFormSchema),
+    defaultValues: {
+      email: "",
+      password: "",
+      confirmPassword: "",
+      firstName: "",
+      lastName: "",
+    },
   });
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (formData.password !== formData.confirmPassword) {
-      toast({
-        title: "Error",
-        description: "Passwords do not match",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (formData.password.length < 8) {
-      toast({
-        title: "Error",
-        description: "Password must be at least 8 characters long",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsLoading(true);
+  const onSubmit = async (data: SignupFormData) => {
     try {
-      const response = await apiRequest("POST", "/api/auth/signup", {
-        email: formData.email,
-        password: formData.password,
-        firstName: formData.firstName,
-        lastName: formData.lastName,
+      await apiRequest("POST", "/api/auth/signup", {
+        email: data.email,
+        password: data.password,
+        firstName: data.firstName,
+        lastName: data.lastName,
       });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || "Failed to create account");
-      }
 
       toast({
         title: "Success",
         description: "Account created successfully!",
       });
       
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
       setLocation("/");
     } catch (error: any) {
       toast({
@@ -70,8 +56,6 @@ export default function SignupPage() {
         description: error.message || "Failed to create account",
         variant: "destructive",
       });
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -85,98 +69,125 @@ export default function SignupPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              <FormField
+                control={form.control}
                 name="email"
-                type="email"
-                placeholder="you@example.com"
-                value={formData.email}
-                onChange={handleChange}
-                required
-                data-testid="input-email"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Email</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="email"
+                        placeholder="you@example.com"
+                        data-testid="input-email"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
-            </div>
-            
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="firstName">First Name</Label>
-                <Input
-                  id="firstName"
-                  name="firstName"
-                  type="text"
-                  placeholder="John"
-                  value={formData.firstName}
-                  onChange={handleChange}
-                  data-testid="input-firstname"
-                />
-              </div>
               
-              <div className="space-y-2">
-                <Label htmlFor="lastName">Last Name</Label>
-                <Input
-                  id="lastName"
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="firstName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>First Name</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="John"
+                          data-testid="input-firstname"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                
+                <FormField
+                  control={form.control}
                   name="lastName"
-                  type="text"
-                  placeholder="Doe"
-                  value={formData.lastName}
-                  onChange={handleChange}
-                  data-testid="input-lastname"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Last Name</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="Doe"
+                          data-testid="input-lastname"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
                 />
               </div>
-            </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
+              <FormField
+                control={form.control}
                 name="password"
-                type="password"
-                placeholder="At least 8 characters"
-                value={formData.password}
-                onChange={handleChange}
-                required
-                data-testid="input-password"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Password</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="password"
+                        placeholder="At least 8 characters"
+                        data-testid="input-password"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
-            </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="confirmPassword">Confirm Password</Label>
-              <Input
-                id="confirmPassword"
+              <FormField
+                control={form.control}
                 name="confirmPassword"
-                type="password"
-                placeholder="Re-enter your password"
-                value={formData.confirmPassword}
-                onChange={handleChange}
-                required
-                data-testid="input-confirm-password"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Confirm Password</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="password"
+                        placeholder="Re-enter your password"
+                        data-testid="input-confirm-password"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
-            </div>
 
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={isLoading}
-              data-testid="button-signup"
-            >
-              {isLoading ? "Creating Account..." : "Sign Up"}
-            </Button>
-
-            <div className="text-center text-sm">
-              <span className="text-muted-foreground">Already have an account? </span>
-              <button
-                type="button"
-                onClick={() => setLocation("/login")}
-                className="text-primary hover:underline"
-                data-testid="link-login"
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={form.formState.isSubmitting}
+                data-testid="button-signup"
               >
-                Log in
-              </button>
-            </div>
-          </form>
+                {form.formState.isSubmitting ? "Creating Account..." : "Sign Up"}
+              </Button>
+
+              <div className="text-center text-sm">
+                <span className="text-muted-foreground">Already have an account? </span>
+                <button
+                  type="button"
+                  onClick={() => setLocation("/login")}
+                  className="text-primary hover:underline"
+                  data-testid="link-login"
+                >
+                  Log in
+                </button>
+              </div>
+            </form>
+          </Form>
         </CardContent>
       </Card>
     </div>
