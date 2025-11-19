@@ -1,0 +1,493 @@
+I want to design and develop a Standalone AI-Powered Hospitality Enterprise Resource Management / Property Management System (PMS/ERM) that installs and runs offline on desktop computers (Windows/macOS/Linux) but requires an active subscription key to unlock advanced features.
+
+The application should support hotels, guest houses, resorts, serviced apartments, hostels, and bed & breakfasts. It must handle reservations, check-in/out, room inventory, housekeeping, maintenance, staff, finance, point-of-sale (POS) for F&B and extras, and guest analytics — all integrated and enterprise-grade.
+
+The system should include AI modules for forecasting demand, dynamic pricing, occupancy optimization, guest personalization, service recommendation, anomaly detection (fraud, chargebacks), and maintenance prediction. The AI features should run offline for inference and be activatable only when the user's subscription is valid. The app must also support optional cloud sync and model updates when online.
+
+Extend the design with a comprehensive DATA & ML plan: dataset schemas, data collection strategy, labeling, preprocessing, training pipelines, evaluation metrics, model packaging for offline use, privacy & consent, monitoring and update cadence, and integration details. Produce concrete examples and deliverables so a development + data science team can implement everything end-to-end.
+
+Deliverables to produce
+
+Short system summary (modules + AI capabilities).
+
+Dataset schema for each AI model (fields, types, units, example values, required vs optional, frequency).
+
+Data-collection & instrumentation strategy (UI, sensors/devices, formats).
+
+Labeling guidelines and ground truth methods for supervised tasks.
+
+Preprocessing & feature engineering recipes per model.
+
+Training pipeline (local/cloud), model selection rationale, hyperparameters, and evaluation metrics.
+
+Model packaging strategy for offline inference and encryption tied to license.
+
+Model update & versioning policy.
+
+Integration design: how desktop app calls models (examples and endpoints).
+
+Privacy, consent, and compliance checklist.
+
+Monitoring, feedback loop & drift detection plan.
+
+Example synthetic dataset rows (CSV / JSON) for key models.
+
+API endpoints and local storage schema (SQLite DDL snippets).
+
+Prioritized roadmap (MVP → Phase 2 → Phase 3).
+
+Short implementation checklist (10–15 actionable items).
+
+1) System summary (short)
+
+Produce a concise summary of the hospitality ERM/PMS with AI:
+
+Standalone installable desktop app (works offline).
+
+Requires license key activation (monthly/yearly subscription).
+
+Core modules: Reservations, Front-Desk (check-in/out), Room Inventory, Housekeeping, Maintenance, Staff & Payroll, POS (restaurant/mini-bar), Guest CRM, Finance & Accounting, Reporting & Analytics.
+
+AI features (licensed): demand forecasting, dynamic pricing, occupancy & revenue optimization, guest personalization & upsell recommendations, guest sentiment & churn prediction, maintenance prediction, fraud/anomaly detection.
+
+Offline: core PMS functions remain available without internet; advanced AI features require active subscription and local encrypted model files. Basic reports available when subscription expires; premium predictive features disabled.
+
+2) Dataset schemas (complete) — tables for each AI module
+
+For each model provide: field name, type, units, example, required/optional, frequency, notes.
+
+A. Demand & Occupancy Forecasting (property-level / room-type)
+
+property_id — string — "prop_001" — required — static
+
+room_type — string — "Deluxe King" — required — static
+
+date — ISO8601 — "2025-12-01" — required — daily
+
+bookings_count — int — 12 — required — daily (bookings with arrival date==date)
+
+checkins_count — int — 10 — required — daily
+
+nights_sold — int — 24 — required — daily
+
+available_rooms — int — 20 — required — daily
+
+avg_rate — float — local currency/day — 120.00 — required — daily
+
+occupancy_rate — float — 0.55 — computed — daily
+
+events_local — JSON — {"event":"conference","attendees":200} — optional — event-based
+
+weather_avg_temp_c — float — optional — daily (from API)
+
+holiday_flag — bool — true/false — optional — daily
+
+market_index — float — optional — daily (external OTA index)
+
+Label (for supervised training): nights_sold_next_7_days or occupancy_next_week
+
+B. Dynamic Pricing (revenue management)
+
+property_id, room_type, date, current_price, competitor_prices (avg), occupancy_rate, lead_time_days (days between booking and arrival), booking_window (7/30), weekday_flag, special_offer_flag — frequency: per price decision (real-time/periodic)
+
+Label: optimal_price (derived from simulation/historical realized revenue per price)
+
+C. Guest Personalization & Recommendation
+
+guest_id — string — "guest_404" — required — static
+
+property_id — string — required
+
+stay_id — string — reservation id — required
+
+arrival_date, length_of_stay_days, room_type_booked, purchases — JSON (F&B, spa, extras), spend_total, demographics (age_range, nationality), feedback_score (1–10), preferences (e.g., pillow type), channel (OTA/direct) — frequency: per stay
+
+Label/Target: next_purchase_recommendation or upsell_probability (for training)
+
+D. Guest Sentiment & Churn Prediction
+
+Use guest reviews, feedback forms, NPS, in-stay messages.
+Fields: guest_id, stay_id, date, review_text, review_score, nps_score, service_incidents (count), complaints (boolean), repeat_guest_flag.
+
+Label: churn_within_12_months (bool) or likelihood_to_return (probability)
+
+E. Housekeeping & Turnover Optimization
+
+room_id, date, occupancy_status (occupied/checked_out/available), check_out_time, expected_clean_duration, actual_clean_duration, cleaning_staff_id, housekeeping_priority, special_requests — frequency: per turnover
+
+Label/Target: predicted_clean_duration — for staff scheduling ML
+
+F. Maintenance Prediction (predict equipment failures)
+
+equipment_id, property_id, equipment_type, installation_date, usage_hours, last_service_date, fault_events_count, sensor_readings (temp/vibration), maintenance_costs — frequency: daily/hourly for sensors, event-based for faults
+
+Label: time_to_failure_days or failure_within_30_days (bool)
+
+G. Fraud & Anomaly Detection (chargeback, overbooking)
+
+Transaction-level: transaction_id, guest_id, amount, payment_method, card_bin, ip_address, booking_ip_country, booking_channel, flagged_discrepancies — frequency: per transaction
+
+Label: is_fraud (bool) — for supervised training where historical fraud is known
+
+H. POS Sales Forecast & Inventory (F&B / Mini-bar)
+
+outlet_id, date, item_id, sales_qty, stock_level, price, promotion_flag, event_flag — aggregated daily/hourly
+
+Label: sales_next_day per item — for replenishment planning
+
+3) Data-collection strategy & instrumentation
+
+Manual Entry UI:
+
+Front-desk forms for reservations & check-ins with validation (IDs, email, card tokens masked).
+
+Housekeeping mobile UI (tablet/phone) to update room status, cleaning times, and issues.
+
+Maintenance logging UI for technicians (work orders, parts used, downtime).
+
+POS terminals for restaurant, mini-bar, spa; produce structured logs.
+
+Bulk Import / OTA Sync:
+
+Support CSV/Excel import templates for past bookings, room list, rate plans.
+
+Integrations/adapters for common channel managers and OTAs (Booking.com, Expedia, Airbnb) via their APIs (optional). Implement mapping and deduplication rules.
+
+Sensors & IoT (optional):
+
+For maintenance: attach vibration or temp sensors on HVAC, pumps. Use MQTT/HTTP JSON payloads.
+
+For occupancy/energy optimization: motion sensors, smart meters.
+
+Text & Voice Data:
+
+Guest reviews from OTAs and internal feedback; parse with NLP pipelines.
+
+Call logs/transcription optional for sentiment analysis (consent required).
+
+Image Data:
+
+For damage detection in rooms: staff can upload photos via mobile app; include timestamp, room_id, staff_id.
+
+Validation & QC:
+
+Enforce mandatory fields for critical flows (e.g., reservation: name, arrival_date, nights, payment status).
+
+Range checks for numeric fields (no negative revenue), duplicate detection for reservations.
+
+Data sanity: reconcile POS totals with daily revenue reports.
+
+Offline-first Sync:
+
+Local write-ahead queue; when online, sync to central license server or optional cloud account. Use last-write-wins with audit logs and conflict resolution UI.
+
+Metadata:
+
+Every record includes device_id, user_id, app_version, and timezone.
+
+4) Labeling guidelines & ground truth
+
+Demand labels: use realized stays/nights sold aggregated over booking window to form ground-truth demand targets. Reconcile cancellations and no-shows.
+
+Pricing labels (optimal_price): derive via historical revenue realized and A/B experiment logs; simulate revenue for past price points using holdout policy.
+
+Guest feedback/sentiment: human-labeled sentiment for initial training; then expand with weak supervision (ratings -> sentiment) and active learning.
+
+Maintenance failures: technician-confirmed failure events are ground truth; label time-to-failure using known failure timestamps.
+
+Fraud labels: use chargeback history and investigations. Ensure legal/privacy compliance when storing PII.
+
+Image labels (room damage): hotel staff or quality control team labels images with damage types; use multiple labelers and adjudication.
+
+Inter-annotator checks: require ≥2 labelers for subjective labels; calculate agreement (Cohen’s Kappa), adjudicate disagreements.
+
+5) Preprocessing & feature engineering recipes
+
+Time-series (demand/pricing):
+
+Fill small gaps with forward-fill; mark large gaps.
+
+Create lags (1,7,14,30 days), rolling means/std (7/30 days).
+
+Calendar features: day-of-week, month, holiday flags, school breaks, local events.
+
+Encode promotions and channel mix features (percentage of bookings from OTAs vs direct).
+
+Tabular classification/regression (guest churn, maintenance):
+
+Encode categorical features: one-hot for small cardinality, target-encoding for many values (e.g., channel).
+
+Create ratio features: spend_per_night = spend_total / length_of_stay.
+
+Normalize/scale numeric features; save scaler metadata.
+
+Text (sentiment):
+
+Clean text, remove PII, lowercase, tokenize. Use pretrained embeddings (DistilBERT or smaller distill models) for embedding. For offline runtime consider quantized or distilled models (DistilBERT -> ONNX/TFLite).
+
+Images (damage detection):
+
+Resize to 224x224 or 320x320, normalize. Augment (brightness, rotation), use MobileNet/EfficientNet-B0.
+
+Anomaly detection (fraud):
+
+Create engineered features: booking_ip_distance (booking IP vs billing address country), velocity features (bookings per IP/time window).
+
+6) Training pipeline & model selection
+
+Environment & reproducibility: use Docker, pin package versions, store seeds. Save model metadata (hyperparams, dataset snapshot hash).
+
+Model candidates & rationale:
+
+Tabular: XGBoost/LightGBM for demand & pricing.
+
+Time series: Prophet for explainability; LSTM/TFT for complex patterns.
+
+Text: DistilBERT / TinyBERT for sentiment with quantization.
+
+Images: MobileNetV2 / EfficientNet-B0.
+
+Anomaly: Isolation Forest or Autoencoder for unsupervised fraud detection.
+
+Hyperparameters (examples):
+
+XGBoost: n_estimators: 300, learning_rate: 0.05, max_depth: 6, subsample: 0.8.
+
+LightGBM: similar ranges; tune via Optuna.
+
+Evaluation metrics:
+
+Forecasting: MAPE, MAE, RMSE.
+
+Pricing: revenue uplift metric (simulated), MAE for price regression.
+
+Classification: Precision/Recall, F1, ROC-AUC (for fraud), PR-AUC for imbalanced classes.
+
+Images: Precision/Recall, mAP, confusion matrix.
+
+Validation strategy: time-based CV for temporal tasks; stratified k-fold for classification where appropriate.
+
+Hyperparam search: use Optuna or RandomSearch with budgeted trials.
+
+Artifacts: save best model, preprocessing pipeline, scaler, feature list, and model metadata JSON.
+
+7) Model packaging for offline inference
+
+Formats:
+
+Tabular models: export as ONNX or joblib. ONNX preferred for cross-runtime.
+
+Time-series Prophet: pickle; consider converting forecasting logic to simple regressors for runtime if necessary.
+
+Text models: convert to ONNX/TFLite (quantized) for offline embedding + classifier.
+
+Image models: TensorFlow Lite or ONNX (quantized for size).
+
+Targets: aim for models < 50–100 MB where possible; inference latency < 500–800ms on typical laptop CPU.
+
+Encryption & Licensing: encrypt model files (AES-256); decryption key only provided after local license verification. Model metadata includes signature (RSA) to verify origin.
+
+Runtime options: embed Python runtime for quick dev, or prefer ONNX/TFLite runtime libraries in native app for smaller bundles.
+
+Metadata: include model_version, training_date, feature_schema.json, scaler parameters, and signature.
+
+8) Model update & versioning policy
+
+Use semantic versioning for models.
+
+Host encrypted artifacts on license server; app checks for updates when online and subscription is valid.
+
+Atomic updates with rollback: download → verify signature → replace → keep prior copy.
+
+Compatibility check: ensure model feature schema matches app expectations before switching.
+
+Update cadence: monthly for forecasting/pricing in volatile markets, quarterly for others unless critical.
+
+9) Integration design (how the app calls models)
+
+Recommended options:
+
+Option A — Python subprocess (fast dev): local FastAPI that loads models; Electron/Tauri calls http://localhost:PORT/predict.
+
+Option B — ONNX/TFLite native runtime: call models from Node native bindings or Rust for Tauri (no Python bundling).
+
+Option C — WebAssembly (Pyodide): for small models inside the UI layer.
+
+Example local endpoints:
+
+POST /predict/demand — body: JSON features — returns {forecast: [{date, predicted_nights_sold}], model_version}
+
+POST /predict/price — returns {recommended_price: 135.00, expected_revenue_delta: 12.5}
+
+POST /predict/maintenance — returns {failure_probability: 0.78, time_to_failure_days: 12}
+
+POST /predict/guest_recommendation — returns {items: [{id,score,explain}]}
+
+Add timeouts, retries, and deterministic seeds. Log inputs/outputs to analytics_logs for monitoring.
+
+10) Privacy, consent, & compliance
+
+Consent UI: explicit opt-in to share anonymized data for model improvement. Store consent records.
+
+Anonymization: hash personal IDs before cloud upload (salted). Only upload aggregated metrics by default.
+
+Local encryption: encrypt local DB and model cache with AES-256; tie to hardware fingerprint and admin credentials.
+
+Data retention & export: provide data export and delete tools to comply with GDPR-like requests.
+
+Secure transport: TLS 1.2+; API keys for service integrations.
+
+Access control: RBAC for internal users; audit logs for critical operations.
+
+11) Monitoring, feedback loop & drift detection
+
+Local logging: record predictions + actual outcomes into analytics_logs.
+
+Drift metrics: compute rolling residuals and distribution drift (KL-divergence or population stability index). Flag if above thresholds.
+
+Retraining triggers: N labelled samples or drift sustained for X days triggers retraining pipeline.
+
+Active learning: show low-confidence cases to staff for labeling via simple UI.
+
+Telemetry (opt-in): periodically upload anonymized performance stats to central server to improve global models.
+
+12) Example synthetic dataset snippets
+
+Demand forecast row (CSV):
+
+property_id,room_type,date,bookings_count,checkins_count,nights_sold,available_rooms,avg_rate,occupancy_rate,holiday_flag
+prop_001,DeluxeKing,2025-11-30,5,4,8,20,120.00,0.40,true
+
+
+Guest stay / personalization (CSV):
+
+guest_id,stay_id,property_id,arrival_date,length_of_stay_days,room_type_booked,spend_total,purchases,feedback_score,channel
+guest_1001,stay_20251123,prop_001,2025-11-23,3,DeluxeKing,420.50,"[{spa:1},{dinner:2}]",9,direct
+
+
+Maintenance event (CSV):
+
+equipment_id,property_id,equipment_type,usage_hours,last_service_date,fault_events_count,temperature_reading
+eqp_78,prop_001,AC_Unit,1200,2025-06-20,2,67.2
+
+
+POS sales (CSV):
+
+outlet_id,date,item_id,sales_qty,stock_level,price,promotion_flag
+rest_01,2025-11-20,coffee_001,150,50,2.50,false
+
+13) Local API endpoints & SQLite DDL snippets
+
+Local REST endpoints (examples):
+
+POST /local/api/reservations — create reservation
+
+PATCH /local/api/checkin/{reservation_id} — check-in
+
+POST /local/api/housekeeping/{room_id}/status — update room status
+
+POST /local/api/pos/sale — push sale record
+
+POST /local/api/predict/demand — ask for forecast
+
+GET /local/api/models/status — returns versions available
+
+SQLite DDL example for reservations:
+
+CREATE TABLE reservations (
+  id TEXT PRIMARY KEY,
+  property_id TEXT NOT NULL,
+  guest_id TEXT,
+  arrival_date TEXT NOT NULL,
+  departure_date TEXT NOT NULL,
+  room_type TEXT,
+  rate REAL,
+  channel TEXT,
+  status TEXT, -- booked, checked_in, checked_out, cancelled
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+
+SQLite DDL for analytics_logs:
+
+CREATE TABLE analytics_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  property_id TEXT,
+  model_name TEXT,
+  model_version TEXT,
+  input_json TEXT,
+  output_json TEXT,
+  timestamp TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+14) Prioritized roadmap (MVP → Phase 2 → Phase 3)
+
+MVP (0–3 months):
+
+Core PMS: reservations, check-in/out, room inventory, basic POS, housekeeping mobile UI, reports, local DB, license activation flow, installer package.
+
+One ML model: demand/occupancy forecasting for the next 7–30 days (XGBoost/LightGBM) packaged for offline inference.
+
+Basic analytics dashboard and analytics_logs.
+
+Phase 2 (3–6 months):
+
+Dynamic pricing engine (recommendations, A/B testing framework).
+
+Guest personalization & upsell recommendations model.
+
+Maintenance prediction for major equipment (HVAC, pumps).
+
+Model update system and active learning UI.
+
+Phase 3 (6–12 months):
+
+Guest sentiment analysis (NLP) + churn prediction.
+
+Image-based room damage detection and automatic work-order creation.
+
+Full integration with external OTAs and channel managers.
+
+Cloud retraining pipeline, global model improvements, marketplace for add-on models.
+
+15) Implementation checklist (10–15 actionable items)
+
+Create app skeleton with Electron/Tauri + React + TypeScript and local Express API.
+
+Implement local SQLite DB schema: reservations, rooms, guests, pos_sales, housekeeping, maintenance, analytics_logs, subscriptions.
+
+Build installer packages for Windows, macOS, Linux (Electron Builder / Tauri bundler).
+
+Implement license server API (/api/license/verify, /api/license/generate, /api/license/renew) and UI pages in the app for activation.
+
+Add offline license caching and AES-256 encryption with hardware binding.
+
+Implement reservation and front-desk flows with validation and offline-first sync.
+
+Implement housekeeping mobile UI (responsive) for room status updates.
+
+Train MVP demand model (XGBoost) using synthetic/historic data; export as ONNX and package with the app.
+
+Implement local prediction endpoints and UI panels showing forecast + explainability (feature importance).
+
+Build basic analytics dashboard (occupancy, ADR, RevPAR) and export to CSV/PDF.
+
+Add telemetry opt-in UI, anonymization & consent capture.
+
+Implement model update check (download + verify + apply) tied to subscription validity.
+
+Add monitoring & logging for model predictions into analytics_logs.
+
+Draft privacy & data retention policy, and build export/delete tools.
+
+Document deployment and retraining procedures for data science team (Docker recipes, training notebooks).
+
+Extra: Example dev prompts for data science & engineering teams
+
+"Generate a Jupyter notebook that trains an XGBoost model to forecast nights_sold_next_7_days per room type using the provided reservation CSV. Include feature engineering (lags/rolling means), time-series cross-validation, Optuna hyperparameter tuning, SHAP explanations, and export model to ONNX with a model metadata JSON."
+
+"Create a FastAPI microservice that loads an ONNX demand model, exposes /predict/demand endpoint, validates input schema, and logs request/response to analytics_logs SQLite table."
+
+Final note to the AI assistant
+
+Produce the full set of deliverables above now: dataset schemas, collection plan, training pipelines, example data, local API DDL, model packaging steps, monitoring & drift detection strategy, model update policy, prioritized roadmap, and implementation checklist — formatted so my dev and data teams can start implementing immediately without extra clarification.
