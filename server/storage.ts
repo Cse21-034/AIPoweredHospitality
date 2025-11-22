@@ -52,6 +52,14 @@ export interface IStorage {
   getUserByEmail(email: string): Promise<User | undefined>;
   createUser(user: Omit<UpsertUser, 'id'>): Promise<User>;
   upsertUser(user: UpsertUser): Promise<User>;
+  updateUser(id: string, data: Partial<UpsertUser>): Promise<User>;
+  deleteUser(id: string): Promise<boolean>;
+  deleteProperty(id: string): Promise<boolean>;
+  deleteRoomType(id: string): Promise<boolean>;
+  deleteRoom(id: string): Promise<boolean>;
+  deleteGuest(id: string): Promise<boolean>;
+  deleteReservation(id: string): Promise<boolean>;
+  deleteRoomServiceRequest(id: string): Promise<boolean>;
   
   // License operations
   getLicense(id: string): Promise<License | undefined>;
@@ -152,6 +160,56 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
+async updateUser(id: string, data: Partial<UpsertUser>): Promise<User> {
+  const [user] = await db
+    .update(users)
+    .set({ ...data, updatedAt: new Date() })
+    .where(eq(users.id, id))
+    .returning();
+  return user;
+}
+
+async deleteUser(id: string): Promise<boolean> {
+  const result = await db.delete(users).where(eq(users.id, id));
+  return result.rowCount !== null && result.rowCount > 0;
+}
+
+async deleteProperty(id: string): Promise<boolean> {
+  const result = await db.delete(properties).where(eq(properties.id, id));
+  return result.rowCount !== null && result.rowCount > 0;
+}
+
+async deleteRoomType(id: string): Promise<boolean> {
+  const result = await db.delete(roomTypes).where(eq(roomTypes.id, id));
+  return result.rowCount !== null && result.rowCount > 0;
+}
+
+async deleteRoom(id: string): Promise<boolean> {
+  const result = await db.delete(rooms).where(eq(rooms.id, id));
+  return result.rowCount !== null && result.rowCount > 0;
+}
+
+async deleteGuest(id: string): Promise<boolean> {
+  const result = await db.delete(guests).where(eq(guests.id, id));
+  return result.rowCount !== null && result.rowCount > 0;
+}
+
+async deleteReservation(id: string): Promise<boolean> {
+  const result = await db.delete(reservations).where(eq(reservations.id, id));
+  return result.rowCount !== null && result.rowCount > 0;
+}
+
+async deleteRoomServiceRequest(id: string): Promise<boolean> {
+  const result = await db.delete(roomServiceRequests).where(eq(roomServiceRequests.id, id));
+  return result.rowCount !== null && result.rowCount > 0;
+}
+
+
+
+
+
+
+  
   // License operations
   async getLicense(id: string): Promise<License | undefined> {
     const [license] = await db.select().from(licenses).where(eq(licenses.id, id));
