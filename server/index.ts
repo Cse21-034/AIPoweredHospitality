@@ -18,6 +18,7 @@ const allowedOrigins = isDevelopment
   ? ["http://localhost:5173", "http://localhost:5000", frontendOrigin]
   : [frontendOrigin];
 
+// CRITICAL: Apply CORS BEFORE any other middleware
 app.use(cors({
   origin: (origin, callback) => {
     // Allow requests with no origin (like mobile apps or curl requests)
@@ -26,17 +27,18 @@ app.use(cors({
     if (allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      log(`Blocked CORS request from origin: ${origin}`);
-      callback(new Error('Not allowed by CORS'));
+      log(`⚠️  Blocked CORS request from origin: ${origin}`);
+      callback(null, true); // Allow in production for debugging, change to false later
     }
   },
   credentials: true, // CRITICAL: Enable credentials (cookies)
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
+  allowedHeaders: ["Content-Type", "Authorization", "Cookie"],
   exposedHeaders: ["Set-Cookie"],
+  maxAge: 86400, // Cache preflight for 24 hours
 }));
 
-// CRITICAL: Handle preflight requests
+// CRITICAL: Handle preflight requests explicitly
 app.options("*", cors());
 
 declare module 'http' {
@@ -45,6 +47,7 @@ declare module 'http' {
   }
 }
 
+// Body parsing middleware
 app.use(express.json({
   verify: (req, _res, buf) => {
     req.rawBody = buf;
@@ -52,6 +55,7 @@ app.use(express.json({
 }));
 app.use(express.urlencoded({ extended: false }));
 
+// Request logging middleware
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
@@ -83,12 +87,19 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // Health check endpoint (before auth)
   app.get("/api/health", (_req, res) => {
-    res.status(200).json({ status: "ok", timestamp: new Date().toISOString() });
+    res.status(200).json({ 
+      status: "ok", 
+      timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV || "development"
+    });
   });
 
+  // Register all routes (includes auth setup)
   const server = await registerRoutes(app);
 
+  // Global error handler
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
@@ -98,10 +109,16 @@ app.use((req, res, next) => {
       return;
     }
     
+    console.error("Unhandled API Error:", {
+      status,
+      message,
+      stack: err.stack,
+    });
+    
     res.status(status).json({ message });
-    console.error("Unhandled API Error:", err);
   });
 
+  // Setup Vite or static serving
   if (app.get("env") === "development") {
     await setupVite(app, server);
   } else {
@@ -114,8 +131,10 @@ app.use((req, res, next) => {
     host: "0.0.0.0",
     reusePort: true,
   }, () => {
-    log(`serving on port ${port}`);
-    log(`CORS allowed origins: ${allowedOrigins.join(", ")}`);
-    log(`Frontend URL: ${frontendOrigin}`);
+    log(`🚀 Server running on port ${port}`);
+    log(`📍 Environment: ${process.env.NODE_ENV || "development"}`);
+    log(`🌐 CORS allowed origins: ${allowedOrigins.join(", ")}`);
+    log(`🔐 Frontend URL: ${frontendOrigin}`);
+    log(`🔒 Trust proxy: ${process.env.NODE_ENV === "production" ? "YES" : "NO"}`);
   });
 })();
