@@ -21,13 +21,16 @@ export async function apiRequest(
   url: string,
   data?: unknown | undefined,
 ): Promise<Response> {
+  console.log(`API Request: ${method} ${url}`);
+  
   const res = await fetch(getFullUrl(url), {
     method,
     headers: data ? { "Content-Type": "application/json" } : {},
     body: data ? JSON.stringify(data) : undefined,
-    credentials: "include",
+    credentials: "include", // ⚠️ CRITICAL: Send cookies with every request
   });
 
+  console.log(`API Response: ${method} ${url} - ${res.status}`);
   await throwIfResNotOk(res);
   return res;
 }
@@ -38,11 +41,17 @@ export const getQueryFn: <T>(options: {
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
-    const res = await fetch(getFullUrl(queryKey.join("/") as string), {
-      credentials: "include",
+    const url = getFullUrl(queryKey.join("/") as string);
+    console.log(`Query Fetch: ${url}`);
+    
+    const res = await fetch(url, {
+      credentials: "include", // ⚠️ CRITICAL: Send cookies with every request
     });
 
+    console.log(`Query Response: ${url} - ${res.status}`);
+
     if (unauthorizedBehavior === "returnNull" && res.status === 401) {
+      console.log("Query returned 401, returning null");
       return null;
     }
 
