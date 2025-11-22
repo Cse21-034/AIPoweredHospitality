@@ -3,7 +3,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { useEffect, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { queryClient } from "@/lib/queryClient";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { isUnauthorizedError } from "@/lib/authUtils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -19,24 +20,6 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import type { Property, RoomType, Room } from "@shared/schema";
-
-const apiRequest = async (method: string, url: string, body?: any) => {
-  const res = await fetch(url, {
-    method,
-    headers: body ? { "Content-Type": "application/json" } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-    credentials: "include",
-  });
-  if (!res.ok) {
-    const error = await res.json();
-    throw new Error(error.message || `Request failed: ${res.status}`);
-  }
-  return res;
-};
-
-const isUnauthorizedError = (error: Error) => {
-  return error.message.includes("Unauthorized") || error.message.includes("401");
-};
 
 const propertyFormSchema = z.object({
   name: z.string().min(1, "Property name is required"),
