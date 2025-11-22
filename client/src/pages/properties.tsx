@@ -38,7 +38,10 @@ const roomTypeFormSchema = z.object({
   name: z.string().min(1, "Room type name is required"),
   description: z.string().optional(),
   maxOccupancy: z.coerce.number().min(1, "Max occupancy must be at least 1").default(2),
-  baseRate: z.coerce.number().min(0, "Base rate must be positive"),
+  baseRate: z.string().min(1, "Base rate is required")
+    .refine((val) => !isNaN(parseFloat(val)) && parseFloat(val) >= 0, {
+      message: "Base rate must be a valid positive number",
+    }),
 });
 
 const roomFormSchema = z.object({
@@ -67,7 +70,7 @@ const toRoomTypeFormValues = (roomType: RoomType) => ({
   name: roomType.name,
   description: roomType.description || undefined,
   maxOccupancy: roomType.maxOccupancy,
-  baseRate: parseFloat(roomType.baseRate as any),
+  baseRate: roomType.baseRate.toString(),
 });
 
 const toRoomFormValues = (room: Room) => ({
@@ -132,6 +135,7 @@ export default function Properties() {
     resolver: zodResolver(roomTypeFormSchema),
     defaultValues: {
       maxOccupancy: 2,
+      baseRate: "0",
     },
   });
 
@@ -196,10 +200,16 @@ export default function Properties() {
 
   const roomTypeMutation = useMutation({
     mutationFn: async (data: z.infer<typeof roomTypeFormSchema>) => {
+      // Convert baseRate to string to match database schema
+      const apiData = {
+        ...data,
+        baseRate: data.baseRate.toString(),
+      };
+      
       if (selectedRoomType) {
-        await apiRequest("PUT", `/api/room-types/${selectedRoomType.id}`, data);
+        await apiRequest("PUT", `/api/room-types/${selectedRoomType.id}`, apiData);
       } else {
-        await apiRequest("POST", "/api/room-types", data);
+        await apiRequest("POST", "/api/room-types", apiData);
       }
     },
     onSuccess: () => {
@@ -605,7 +615,7 @@ export default function Properties() {
                           <FormControl>
                             <Input placeholder="Deluxe Suite" {...field} />
                           </FormControl>
-                          <FormMessage />
+                            <FormMessage />
                         </FormItem>
                       )}
                     />
@@ -643,7 +653,16 @@ export default function Properties() {
                           <FormItem>
                             <FormLabel>Base Rate *</FormLabel>
                             <FormControl>
-                              <Input type="number" step="0.01" min="0" placeholder="0.00" {...field} />
+                              <Input 
+                                type="text" 
+                                placeholder="0.00" 
+                                {...field} 
+                                onChange={(e) => {
+                                  // Allow only numbers and decimal point
+                                  const value = e.target.value.replace(/[^0-9.]/g, '');
+                                  field.onChange(value);
+                                }}
+                              />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
