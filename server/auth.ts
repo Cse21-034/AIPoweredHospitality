@@ -21,6 +21,12 @@ export async function setupAuth(app: Express) {
     console.warn("⚠️  WARNING: Using default session secret in development");
   }
 
+  // CRITICAL: Trust proxy BEFORE session middleware
+  if (isProduction) {
+    app.set("trust proxy", 1);
+    console.log("✓ Proxy trust enabled");
+  }
+
   // Create sessions table if it doesn't exist
   try {
     await pool.query(`
@@ -40,42 +46,62 @@ export async function setupAuth(app: Express) {
   const sessionStore = new PgSession({
     pool: pool,
     tableName: "sessions",
-    createTableIfMissing: false, // We already created it above
-    pruneSessionInterval: 60 * 15, // Prune expired sessions every 15 minutes
+    createTableIfMissing: false,
+    pruneSessionInterval: 60 * 15,
     errorLog: (error) => {
-      console.error("Session store error:", error);
+      console.error("❌ Session store error:", error);
     },
   });
 
-  // CRITICAL: Configure session middleware properly
-  app.use(
-    session({
-      store: sessionStore,
-      secret: sessionSecret,
-      resave: false,
-      saveUninitialized: false,
-      rolling: true, // Reset expiration on each request
-      name: "hospitality.sid",
-      cookie: {
-        maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-        httpOnly: true,
-        secure: isProduction,
-        sameSite: isProduction ? "none" : "lax",
-        domain: undefined, // Let browser decide
-      },
-      proxy: isProduction, // Trust proxy in production
-    })
-  );
+  // Test session store connection
+  sessionStore.on('connect', () => {
+    console.log('✓ Session store connected');
+  });
 
-  // CRITICAL: Trust proxy headers in production
-  if (isProduction) {
-    app.set("trust proxy", 1);
-  }
+  sessionStore.on('disconnect', () => {
+    console.log('⚠️  Session store disconnected');
+  });
+
+  // CRITICAL: Session configuration for cross-origin
+  const sessionConfig: session.SessionOptions = {
+    store: sessionStore,
+    secret: sessionSecret,
+    resave: false,
+    saveUninitialized: false,
+    rolling: true,
+    name: "hospitality.sid",
+    cookie: {
+      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+      httpOnly: true,
+      secure: isProduction, // ⚠️ CRITICAL: Must be true in production (HTTPS)
+      sameSite: isProduction ? "none" : "lax", // ⚠️ CRITICAL: "none" for cross-origin
+      domain: undefined, // Let browser decide
+      path: "/", // Ensure cookie is sent for all paths
+    },
+    proxy: isProduction,
+  };
+
+  app.use(session(sessionConfig));
+
+  // Debug middleware to log session info
+  app.use((req, res, next) => {
+    if (req.path.startsWith('/api/auth')) {
+      console.log('📍 Auth Request:', {
+        path: req.path,
+        method: req.method,
+        sessionID: req.sessionID,
+        userId: req.session?.userId,
+        cookie: req.headers.cookie ? '✓ Present' : '✗ Missing',
+      });
+    }
+    next();
+  });
 
   console.log("✓ Auth middleware configured");
   console.log(`  - Environment: ${isProduction ? "production" : "development"}`);
   console.log(`  - Cookie secure: ${isProduction}`);
   console.log(`  - Cookie sameSite: ${isProduction ? "none" : "lax"}`);
+  console.log(`  - Trust proxy: ${isProduction}`);
 }
 
 export async function hashPassword(password: string): Promise<string> {
@@ -88,8 +114,17 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
 }
 
 export function isAuthenticated(req: Request, res: Response, next: NextFunction) {
+  console.log('🔐 Auth check:', {
+    path: req.path,
+    sessionID: req.sessionID,
+    userId: req.session?.userId,
+    hasSession: !!req.session,
+  });
+
   if (req.session && req.session.userId) {
     return next();
   }
+  
+  console.log('❌ Unauthorized - No valid session');
   res.status(401).json({ message: "Unauthorized" });
 }
