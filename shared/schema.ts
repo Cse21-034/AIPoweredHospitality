@@ -488,6 +488,16 @@ export const insertReservationSchema = createInsertSchema(reservations)
     }
   );
 
+// Schema for partial updates (check-in, check-out, status changes, etc.)
+export const updateReservationSchema = z.object({
+  status: z.enum(["confirmed", "checked_in", "checked_out", "cancelled", "no_show", "pending"]).optional(),
+  checkInTime: z.string().optional(),
+  checkOutTime: z.string().optional(),
+  numberOfGuests: z.number().optional(),
+  notes: z.string().optional(),
+  specialRequests: z.string().optional(),
+}).strict();
+
 export const insertRoomServiceCategorySchema = createInsertSchema(roomServiceCategories).omit({
   id: true,
   createdAt: true,

@@ -11,6 +11,7 @@ import {
   insertRoomSchema,
   insertGuestSchema,
   insertReservationSchema,
+  updateReservationSchema,
   insertRoomServiceRequestSchema,
   insertRatePlanSchema,
   signupSchema,
@@ -660,7 +661,7 @@ app.get("/api/auth/user", isAuthenticated, async (req, res) => {
   app.put("/api/reservations/:id", isAuthenticated, async (req, res) => {
     try {
       const { id } = req.params;
-      const data = insertReservationSchema.partial().parse(req.body);
+      const data = updateReservationSchema.parse(req.body);
       const reservation = await storage.updateReservation(id, data);
       if (!reservation) {
         return res.status(404).json({ message: "Reservation not found" });
