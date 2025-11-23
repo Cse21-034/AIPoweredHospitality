@@ -13,6 +13,12 @@ import {
   Pizza,
   FileText,
   QrCode,
+  Brain,
+  Zap,
+  AlertTriangle,
+  Users2,
+  Wrench,
+  FileBarChart,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
@@ -94,12 +100,54 @@ const menuItems = [
   },
 ];
 
+const aiItems = [
+  {
+    title: "Demand Forecasting",
+    url: "/ai/demand-forecast",
+    icon: Brain,
+    testId: "nav-demand-forecast",
+  },
+  {
+    title: "Dynamic Pricing",
+    url: "/ai/dynamic-pricing",
+    icon: Zap,
+    testId: "nav-dynamic-pricing",
+  },
+  {
+    title: "Fraud & Churn",
+    url: "/ai/fraud-churn",
+    icon: AlertTriangle,
+    testId: "nav-fraud-churn",
+  },
+];
+
+const managementItems = [
+  {
+    title: "Staff Management",
+    url: "/staff-management",
+    icon: Users2,
+    testId: "nav-staff",
+  },
+  {
+    title: "Housekeeping & Maintenance",
+    url: "/housekeeping-maintenance",
+    icon: Wrench,
+    testId: "nav-housekeeping",
+  },
+  {
+    title: "Advanced Reports",
+    url: "/analytics-reports",
+    icon: FileBarChart,
+    testId: "nav-reports",
+  },
+];
+
 const settingsItems = [
   {
     title: "License & Subscription",
-    url: "/subscription",
+    url: "/license-subscription",
     icon: Key,
-    testId: "nav-subscription",
+    testId: "nav-license",
   },
   {
     title: "Settings",
@@ -128,6 +176,42 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               {menuItems.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton asChild isActive={location === item.url}>
+                    <Link href={item.url} data-testid={item.testId}>
+                      <item.icon className="h-5 w-5" />
+                      <span>{item.title}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          <SidebarGroupLabel>AI & Insights</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {aiItems.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton asChild isActive={location === item.url}>
+                    <Link href={item.url} data-testid={item.testId}>
+                      <item.icon className="h-5 w-5" />
+                      <span>{item.title}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          <SidebarGroupLabel>Operations</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {managementItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild isActive={location === item.url}>
                     <Link href={item.url} data-testid={item.testId}>

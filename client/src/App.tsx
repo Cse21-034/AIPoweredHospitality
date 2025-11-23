@@ -29,6 +29,15 @@ import QRCodes from "@/pages/qr-codes";
 import RoomServicePortal from "@/pages/room-service-portal";
 import GuestRoomService from "@/pages/qr-room-service";
 import NotFound from "@/pages/not-found";
+// AI Pages
+import AIDemandForecast from "@/pages/ai-demand-forecast";
+import AIDynamicPricing from "@/pages/ai-dynamic-pricing";
+import AIFraudChurn from "@/pages/ai-fraud-churn";
+// Management Pages
+import StaffManagement from "@/pages/staff-management";
+import HousekeepingMaintenance from "@/pages/housekeeping-maintenance";
+import LicenseSubscription from "@/pages/license-subscription";
+import AnalyticsReports from "@/pages/analytics-reports";
 
 function AuthenticatedRouter() {
   return (
@@ -45,8 +54,15 @@ function AuthenticatedRouter() {
       <Route path="/room-service-portal/:reservationId" component={RoomServicePortal} />
       <Route path="/rates" component={Rates} />
       <Route path="/analytics" component={Analytics} />
+      <Route path="/analytics-reports" component={AnalyticsReports} />
       <Route path="/subscription" component={Subscription} />
+      <Route path="/license-subscription" component={LicenseSubscription} />
       <Route path="/settings" component={Settings} />
+      <Route path="/ai/demand-forecast" component={AIDemandForecast} />
+      <Route path="/ai/dynamic-pricing" component={AIDynamicPricing} />
+      <Route path="/ai/fraud-churn" component={AIFraudChurn} />
+      <Route path="/staff-management" component={StaffManagement} />
+      <Route path="/housekeeping-maintenance" component={HousekeepingMaintenance} />
       <Route component={NotFound} />
     </Switch>
   );
