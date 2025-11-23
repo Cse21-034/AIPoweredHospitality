@@ -16,6 +16,11 @@ import {
   aiForecasts,
   pricingRecommendations,
   otaConnections,
+  shopMenuItems,
+  guestOrders,
+  guestOrderItems,
+  guestMessages,
+  guestBilling,
   type User,
   type UpsertUser,
   type License,
@@ -42,6 +47,18 @@ import {
   type InsertOtaConnection,
   type AiForecast,
   type PricingRecommendation,
+  type ShopMenuItem,
+  type InsertShopMenuItem,
+  type UpdateShopMenuItem,
+  type GuestOrder,
+  type InsertGuestOrder,
+  type GuestOrderItem,
+  type InsertGuestOrderItem,
+  type GuestMessage,
+  type InsertGuestMessage,
+  type GuestBilling,
+  type InsertGuestBilling,
+  type UpdateGuestBilling,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, gte, lte, sql } from "drizzle-orm";
@@ -123,6 +140,32 @@ export interface IStorage {
   // OTA Connection operations
   getOtaConnections(propertyId: string): Promise<OtaConnection[]>;
   createOtaConnection(connection: InsertOtaConnection): Promise<OtaConnection>;
+  
+  // Shop Menu operations
+  getShopMenuItems(propertyId: string): Promise<ShopMenuItem[]>;
+  getShopMenuItem(id: string): Promise<ShopMenuItem | undefined>;
+  createShopMenuItem(item: InsertShopMenuItem): Promise<ShopMenuItem>;
+  updateShopMenuItem(id: string, data: UpdateShopMenuItem): Promise<ShopMenuItem>;
+  deleteShopMenuItem(id: string): Promise<boolean>;
+  
+  // Guest Order operations
+  getGuestOrders(propertyId?: string, reservationId?: string): Promise<any[]>;
+  getGuestOrder(id: string): Promise<any | undefined>;
+  createGuestOrder(order: InsertGuestOrder): Promise<GuestOrder>;
+  updateGuestOrder(id: string, data: Partial<InsertGuestOrder>): Promise<GuestOrder>;
+  createGuestOrderItem(item: InsertGuestOrderItem): Promise<GuestOrderItem>;
+  getGuestOrderItems(orderId: string): Promise<any[]>;
+  
+  // Guest Message operations
+  getGuestMessages(reservationId?: string, orderId?: string): Promise<GuestMessage[]>;
+  createGuestMessage(message: InsertGuestMessage): Promise<GuestMessage>;
+  markMessagesAsRead(reservationId: string, recipientId: string): Promise<void>;
+  
+  // Guest Billing operations
+  getGuestBilling(reservationId: string): Promise<GuestBilling | undefined>;
+  createGuestBilling(billing: InsertGuestBilling): Promise<GuestBilling>;
+  updateGuestBilling(id: string, data: UpdateGuestBilling): Promise<GuestBilling>;
+  calculateGuestBilling(reservationId: string): Promise<any>;
   
   // Dashboard Stats
   getDashboardStats(propertyId: string): Promise<any>;
@@ -729,6 +772,259 @@ async deleteRoomServiceRequest(id: string): Promise<boolean> {
       totalRevenue: Number(todayRevenue[0]?.total || 0),
       pendingRoomService: Number(pendingRoomService[0]?.count || 0),
       availableRooms: totalRoomsCount - occupiedCount,
+    };
+  }
+
+  // ========== SHOP MENU OPERATIONS ==========
+  
+  async getShopMenuItems(propertyId: string): Promise<ShopMenuItem[]> {
+    return await db
+      .select()
+      .from(shopMenuItems)
+      .where(eq(shopMenuItems.propertyId, propertyId))
+      .orderBy(shopMenuItems.displayOrder, shopMenuItems.name);
+  }
+
+  async getShopMenuItem(id: string): Promise<ShopMenuItem | undefined> {
+    const [item] = await db
+      .select()
+      .from(shopMenuItems)
+      .where(eq(shopMenuItems.id, id));
+    return item;
+  }
+
+  async createShopMenuItem(itemData: InsertShopMenuItem): Promise<ShopMenuItem> {
+    const [item] = await db.insert(shopMenuItems).values(itemData).returning();
+    return item;
+  }
+
+  async updateShopMenuItem(id: string, data: UpdateShopMenuItem): Promise<ShopMenuItem> {
+    const [item] = await db
+      .update(shopMenuItems)
+      .set(data)
+      .where(eq(shopMenuItems.id, id))
+      .returning();
+    return item;
+  }
+
+  async deleteShopMenuItem(id: string): Promise<boolean> {
+    const result = await db
+      .delete(shopMenuItems)
+      .where(eq(shopMenuItems.id, id));
+    return !!result;
+  }
+
+  // ========== GUEST ORDER OPERATIONS ==========
+  
+  async getGuestOrders(propertyId?: string, reservationId?: string): Promise<any[]> {
+    let query = db
+      .select({
+        id: guestOrders.id,
+        orderNumber: guestOrders.orderNumber,
+        totalAmount: guestOrders.totalAmount,
+        status: guestOrders.status,
+        orderedAt: guestOrders.orderedAt,
+        deliveredAt: guestOrders.deliveredAt,
+        specialInstructions: guestOrders.specialInstructions,
+        guestName: guests.firstName,
+        roomNumber: rooms.roomNumber,
+        reservationId: guestOrders.reservationId,
+      })
+      .from(guestOrders)
+      .leftJoin(guests, eq(guestOrders.guestId, guests.id))
+      .leftJoin(rooms, eq(guestOrders.roomId, rooms.id));
+
+    if (propertyId) {
+      query = query.where(eq(guestOrders.propertyId, propertyId));
+    }
+    
+    if (reservationId) {
+      query = query.andWhere(eq(guestOrders.reservationId, reservationId));
+    }
+
+    return await query.orderBy(desc(guestOrders.orderedAt));
+  }
+
+  async getGuestOrder(id: string): Promise<any | undefined> {
+    const [order] = await db
+      .select({
+        id: guestOrders.id,
+        orderNumber: guestOrders.orderNumber,
+        totalAmount: guestOrders.totalAmount,
+        status: guestOrders.status,
+        orderedAt: guestOrders.orderedAt,
+        deliveredAt: guestOrders.deliveredAt,
+        specialInstructions: guestOrders.specialInstructions,
+        guestName: guests.firstName,
+        roomNumber: rooms.roomNumber,
+        guestEmail: guests.email,
+      })
+      .from(guestOrders)
+      .leftJoin(guests, eq(guestOrders.guestId, guests.id))
+      .leftJoin(rooms, eq(guestOrders.roomId, rooms.id))
+      .where(eq(guestOrders.id, id));
+    
+    return order;
+  }
+
+  async createGuestOrder(orderData: InsertGuestOrder): Promise<GuestOrder> {
+    const [order] = await db.insert(guestOrders).values(orderData).returning();
+    return order;
+  }
+
+  async updateGuestOrder(id: string, data: Partial<InsertGuestOrder>): Promise<GuestOrder> {
+    const [order] = await db
+      .update(guestOrders)
+      .set(data)
+      .where(eq(guestOrders.id, id))
+      .returning();
+    return order;
+  }
+
+  async createGuestOrderItem(itemData: InsertGuestOrderItem): Promise<GuestOrderItem> {
+    const [item] = await db.insert(guestOrderItems).values(itemData).returning();
+    return item;
+  }
+
+  async getGuestOrderItems(orderId: string): Promise<any[]> {
+    return await db
+      .select({
+        id: guestOrderItems.id,
+        quantity: guestOrderItems.quantity,
+        unitPrice: guestOrderItems.unitPrice,
+        totalPrice: guestOrderItems.totalPrice,
+        specialRequests: guestOrderItems.specialRequests,
+        menuItemName: shopMenuItems.name,
+        category: shopMenuItems.category,
+        image: shopMenuItems.image,
+      })
+      .from(guestOrderItems)
+      .leftJoin(shopMenuItems, eq(guestOrderItems.menuItemId, shopMenuItems.id))
+      .where(eq(guestOrderItems.orderId, orderId));
+  }
+
+  // ========== GUEST MESSAGE OPERATIONS ==========
+  
+  async getGuestMessages(reservationId?: string, orderId?: string): Promise<GuestMessage[]> {
+    let query = db.select().from(guestMessages);
+
+    if (reservationId) {
+      query = query.where(eq(guestMessages.reservationId, reservationId));
+    }
+    
+    if (orderId) {
+      query = query.andWhere(eq(guestMessages.orderId, orderId));
+    }
+
+    return await query.orderBy(guestMessages.createdAt);
+  }
+
+  async createGuestMessage(messageData: InsertGuestMessage): Promise<GuestMessage> {
+    const [message] = await db.insert(guestMessages).values(messageData).returning();
+    return message;
+  }
+
+  async markMessagesAsRead(reservationId: string, recipientId: string): Promise<void> {
+    await db
+      .update(guestMessages)
+      .set({ isRead: true })
+      .where(
+        and(
+          eq(guestMessages.reservationId, reservationId),
+          eq(guestMessages.recipientId, recipientId),
+          eq(guestMessages.isRead, false)
+        )
+      );
+  }
+
+  // ========== GUEST BILLING OPERATIONS ==========
+  
+  async getGuestBilling(reservationId: string): Promise<GuestBilling | undefined> {
+    const [billing] = await db
+      .select()
+      .from(guestBilling)
+      .where(eq(guestBilling.reservationId, reservationId));
+    return billing;
+  }
+
+  async createGuestBilling(billingData: InsertGuestBilling): Promise<GuestBilling> {
+    const [billing] = await db.insert(guestBilling).values(billingData).returning();
+    return billing;
+  }
+
+  async updateGuestBilling(id: string, data: UpdateGuestBilling): Promise<GuestBilling> {
+    const [billing] = await db
+      .update(guestBilling)
+      .set(data)
+      .where(eq(guestBilling.id, id))
+      .returning();
+    return billing;
+  }
+
+  async calculateGuestBilling(reservationId: string): Promise<any> {
+    // Get reservation details
+    const [reservation] = await db
+      .select()
+      .from(reservations)
+      .where(eq(reservations.id, reservationId));
+
+    if (!reservation) {
+      throw new Error("Reservation not found");
+    }
+
+    // Calculate room charges (already in reservation.totalAmount)
+    const roomCharges = Number(reservation.totalAmount) || 0;
+
+    // Calculate room service charges
+    const roomServiceOrders = await db
+      .select({
+        total: sql<number>`SUM(CAST(${guestOrders.totalAmount} AS NUMERIC))`,
+      })
+      .from(guestOrders)
+      .where(
+        and(
+          eq(guestOrders.reservationId, reservationId),
+          eq(guestOrders.status, "delivered")
+        )
+      );
+
+    const roomServiceCharges = Number(roomServiceOrders[0]?.total || 0);
+    const totalAmount = roomCharges + roomServiceCharges;
+
+    // Check for existing billing
+    let billing = await this.getGuestBilling(reservationId);
+
+    if (!billing) {
+      // Create new billing record
+      billing = await this.createGuestBilling({
+        propertyId: reservation.propertyId,
+        reservationId,
+        guestId: reservation.guestId,
+        totalRoomCharges: roomCharges.toString(),
+        totalRoomServiceCharges: roomServiceCharges.toString(),
+        totalAmount: totalAmount.toString(),
+        remainingAmount: totalAmount.toString(),
+      });
+    } else {
+      // Update existing billing
+      const amountPaid = Number(billing.amountPaid) || 0;
+      const remainingAmount = totalAmount - amountPaid;
+      
+      billing = await this.updateGuestBilling(billing.id, {
+        totalRoomCharges: roomCharges.toString(),
+        totalRoomServiceCharges: roomServiceCharges.toString(),
+        remainingAmount: remainingAmount.toString(),
+      });
+    }
+
+    return {
+      ...billing,
+      totalRoomCharges: Number(billing.totalRoomCharges),
+      totalRoomServiceCharges: Number(billing.totalRoomServiceCharges),
+      totalOtherCharges: Number(billing.totalOtherCharges),
+      totalAmount: Number(billing.totalAmount),
+      amountPaid: Number(billing.amountPaid),
+      remainingAmount: Number(billing.remainingAmount),
     };
   }
 }

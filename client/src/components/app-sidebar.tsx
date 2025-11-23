@@ -10,6 +10,7 @@ import {
   Settings,
   Key,
   LogOut,
+  Pizza,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
@@ -58,6 +59,12 @@ const menuItems = [
     url: "/room-service",
     icon: UtensilsCrossed,
     testId: "nav-room-service",
+  },
+  {
+    title: "Shop Menu",
+    url: "/shop-menu",
+    icon: Pizza,
+    testId: "nav-shop-menu",
   },
   {
     title: "Rate Management",

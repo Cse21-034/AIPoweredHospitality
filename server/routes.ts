@@ -16,6 +16,13 @@ import {
   insertRatePlanSchema,
   signupSchema,
   loginSchema,
+  insertShopMenuItemSchema,
+  updateShopMenuItemSchema,
+  insertGuestOrderSchema,
+  insertGuestOrderItemSchema,
+  insertGuestMessageSchema,
+  insertGuestBillingSchema,
+  updateGuestBillingSchema,
 } from "@shared/schema";
 
 const stripe = process.env.STRIPE_SECRET_KEY 
@@ -1024,6 +1031,283 @@ app.get("/api/auth/user", isAuthenticated, async (req, res) => {
       res.json({ message: "Password updated successfully" });
     } catch (error: any) {
       console.error("Error updating password:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ========== HEALTH CHECK ==========
+  
+  // ========== SHOP MENU ROUTES ==========
+  
+  app.get("/api/shop-menu", isAuthenticated, async (req, res) => {
+    try {
+      const { propertyId } = req.query;
+      
+      if (!propertyId) {
+        return res.status(400).json({ message: "Property ID is required" });
+      }
+
+      const items = await storage.getShopMenuItems(propertyId as string);
+      res.json(items);
+    } catch (error: any) {
+      console.error("Error fetching shop menu:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/shop-menu", isAuthenticated, async (req, res) => {
+    try {
+      const validatedData = insertShopMenuItemSchema.parse(req.body);
+      const item = await storage.createShopMenuItem(validatedData as any);
+      res.status(201).json(item);
+    } catch (error: any) {
+      console.error("Error creating shop menu item:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.put("/api/shop-menu/:id", isAuthenticated, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const validatedData = updateShopMenuItemSchema.parse(req.body);
+      const item = await storage.updateShopMenuItem(id, validatedData as any);
+      res.json(item);
+    } catch (error: any) {
+      console.error("Error updating shop menu item:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/shop-menu/:id", isAuthenticated, async (req, res) => {
+    try {
+      const { id } = req.params;
+      await storage.deleteShopMenuItem(id);
+      res.json({ message: "Menu item deleted successfully" });
+    } catch (error: any) {
+      console.error("Error deleting shop menu item:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ========== GUEST ORDERS ROUTES ==========
+  
+  app.get("/api/guest-orders", isAuthenticated, async (req, res) => {
+    try {
+      const { propertyId, reservationId } = req.query;
+      
+      const orders = await storage.getGuestOrders(
+        propertyId as string | undefined,
+        reservationId as string | undefined
+      );
+      res.json(orders);
+    } catch (error: any) {
+      console.error("Error fetching guest orders:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/guest-orders/:id", isAuthenticated, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const order = await storage.getGuestOrder(id);
+      
+      if (!order) {
+        return res.status(404).json({ message: "Order not found" });
+      }
+
+      // Get order items
+      const items = await storage.getGuestOrderItems(id);
+      res.json({ ...order, items });
+    } catch (error: any) {
+      console.error("Error fetching guest order:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/guest-orders", isAuthenticated, async (req, res) => {
+    try {
+      const validatedData = insertGuestOrderSchema.parse(req.body);
+      const order = await storage.createGuestOrder(validatedData as any);
+      res.status(201).json(order);
+    } catch (error: any) {
+      console.error("Error creating guest order:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/guest-orders/:id/items", isAuthenticated, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const validatedData = insertGuestOrderItemSchema.parse({
+        ...req.body,
+        orderId: id,
+      });
+      const item = await storage.createGuestOrderItem(validatedData as any);
+      res.status(201).json(item);
+    } catch (error: any) {
+      console.error("Error adding order item:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.put("/api/guest-orders/:id", isAuthenticated, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const order = await storage.updateGuestOrder(id, req.body);
+      res.json(order);
+    } catch (error: any) {
+      console.error("Error updating guest order:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ========== GUEST MESSAGES ROUTES ==========
+  
+  app.get("/api/guest-messages", isAuthenticated, async (req, res) => {
+    try {
+      const { reservationId, orderId } = req.query;
+      
+      const messages = await storage.getGuestMessages(
+        reservationId as string | undefined,
+        orderId as string | undefined
+      );
+      res.json(messages);
+    } catch (error: any) {
+      console.error("Error fetching guest messages:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/guest-messages", isAuthenticated, async (req, res) => {
+    try {
+      const validatedData = insertGuestMessageSchema.parse(req.body);
+      const message = await storage.createGuestMessage(validatedData as any);
+      res.status(201).json(message);
+    } catch (error: any) {
+      console.error("Error creating guest message:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.put("/api/guest-messages/:reservationId/mark-read", isAuthenticated, async (req, res) => {
+    try {
+      const { reservationId } = req.params;
+      const { recipientId } = req.body;
+      
+      await storage.markMessagesAsRead(reservationId, recipientId);
+      res.json({ message: "Messages marked as read" });
+    } catch (error: any) {
+      console.error("Error marking messages as read:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ========== GUEST BILLING ROUTES ==========
+  
+  app.get("/api/guest-billing/:reservationId", isAuthenticated, async (req, res) => {
+    try {
+      const { reservationId } = req.params;
+      const billing = await storage.calculateGuestBilling(reservationId);
+      res.json(billing);
+    } catch (error: any) {
+      console.error("Error fetching guest billing:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/guest-billing", isAuthenticated, async (req, res) => {
+    try {
+      const validatedData = insertGuestBillingSchema.parse(req.body);
+      const billing = await storage.createGuestBilling(validatedData as any);
+      res.status(201).json(billing);
+    } catch (error: any) {
+      console.error("Error creating guest billing:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.put("/api/guest-billing/:id", isAuthenticated, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const validatedData = updateGuestBillingSchema.parse(req.body);
+      const billing = await storage.updateGuestBilling(id, validatedData as any);
+      res.json(billing);
+    } catch (error: any) {
+      console.error("Error updating guest billing:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ========== STRIPE PAYMENT ROUTES ==========
+  
+  app.post("/api/create-payment-intent", isAuthenticated, async (req, res) => {
+    try {
+      if (!stripe) {
+        return res.status(400).json({ message: "Stripe is not configured" });
+      }
+
+      const { reservationId, amount } = req.body;
+      
+      if (!reservationId || !amount) {
+        return res.status(400).json({ message: "Reservation ID and amount are required" });
+      }
+
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: Math.round(Number(amount) * 100), // Convert to cents
+        currency: "usd",
+        metadata: { reservationId },
+      });
+
+      // Update billing with payment intent
+      const billing = await storage.getGuestBilling(reservationId);
+      if (billing) {
+        await storage.updateGuestBilling(billing.id, {
+          stripePaymentIntentId: paymentIntent.id,
+        });
+      }
+
+      res.json({
+        clientSecret: paymentIntent.client_secret,
+        paymentIntentId: paymentIntent.id,
+      });
+    } catch (error: any) {
+      console.error("Error creating payment intent:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/confirm-payment", isAuthenticated, async (req, res) => {
+    try {
+      if (!stripe) {
+        return res.status(400).json({ message: "Stripe is not configured" });
+      }
+
+      const { paymentIntentId, reservationId, amount } = req.body;
+      
+      const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+      
+      if (paymentIntent.status === "succeeded") {
+        // Update billing
+        const billing = await storage.getGuestBilling(reservationId);
+        if (billing) {
+          const amountPaid = Number(billing.amountPaid) + Number(amount);
+          const totalAmount = Number(billing.totalAmount);
+          const remainingAmount = Math.max(0, totalAmount - amountPaid);
+          
+          await storage.updateGuestBilling(billing.id, {
+            amountPaid: amountPaid.toString(),
+            remainingAmount: remainingAmount.toString(),
+            paymentStatus: remainingAmount === 0 ? "paid" : "partial",
+            paymentMethod: "card",
+          });
+        }
+
+        res.json({ message: "Payment confirmed successfully" });
+      } else {
+        res.status(400).json({ message: "Payment not succeeded" });
+      }
+    } catch (error: any) {
+      console.error("Error confirming payment:", error);
       res.status(500).json({ message: error.message });
     }
   });

@@ -318,6 +318,109 @@ export const otaConnections = pgTable("ota_connections", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// ========== ROOM SERVICE SHOP TABLES ==========
+
+export const shopMenuItems = pgTable("shop_menu_items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  propertyId: varchar("property_id")
+    .notNull()
+    .references(() => properties.id, { onDelete: "cascade" }),
+  name: varchar("name").notNull(),
+  description: text("description"),
+  category: varchar("category").notNull(), // food, beverage, snacks, other
+  price: decimal("price", { precision: 10, scale: 2 }).notNull(),
+  image: text("image"), // URL to image
+  isAvailable: boolean("is_available").default(true),
+  preparationTime: integer("preparation_time"), // in minutes
+  displayOrder: integer("display_order").default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const guestOrders = pgTable("guest_orders", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  propertyId: varchar("property_id")
+    .notNull()
+    .references(() => properties.id, { onDelete: "cascade" }),
+  reservationId: varchar("reservation_id")
+    .notNull()
+    .references(() => reservations.id, { onDelete: "cascade" }),
+  guestId: varchar("guest_id")
+    .notNull()
+    .references(() => guests.id, { onDelete: "cascade" }),
+  roomId: varchar("room_id")
+    .notNull()
+    .references(() => rooms.id, { onDelete: "cascade" }),
+  orderNumber: varchar("order_number").notNull(), // unique per order
+  totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).notNull(),
+  status: varchar("status").default("pending"), // pending, confirmed, preparing, delivered, cancelled
+  specialInstructions: text("special_instructions"),
+  deliveryNotes: text("delivery_notes"),
+  orderedAt: timestamp("ordered_at").defaultNow().notNull(),
+  confirmedAt: timestamp("confirmed_at"),
+  deliveredAt: timestamp("delivered_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const guestOrderItems = pgTable("guest_order_items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  orderId: varchar("order_id")
+    .notNull()
+    .references(() => guestOrders.id, { onDelete: "cascade" }),
+  menuItemId: varchar("menu_item_id")
+    .notNull()
+    .references(() => shopMenuItems.id, { onDelete: "restrict" }),
+  quantity: integer("quantity").notNull(),
+  unitPrice: decimal("unit_price", { precision: 10, scale: 2 }).notNull(),
+  totalPrice: decimal("total_price", { precision: 10, scale: 2 }).notNull(),
+  specialRequests: text("special_requests"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const guestMessages = pgTable("guest_messages", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  propertyId: varchar("property_id")
+    .notNull()
+    .references(() => properties.id, { onDelete: "cascade" }),
+  reservationId: varchar("reservation_id")
+    .notNull()
+    .references(() => reservations.id, { onDelete: "cascade" }),
+  orderId: varchar("order_id")
+    .references(() => guestOrders.id, { onDelete: "set null" }),
+  senderId: varchar("sender_id").notNull(), // guest user id
+  recipientId: varchar("recipient_id"), // staff user id (null if broadcast)
+  message: text("message").notNull(),
+  messageType: varchar("message_type").default("text"), // text, order_update, notification
+  isRead: boolean("is_read").default(false),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const guestBilling = pgTable("guest_billing", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  propertyId: varchar("property_id")
+    .notNull()
+    .references(() => properties.id, { onDelete: "cascade" }),
+  reservationId: varchar("reservation_id")
+    .notNull()
+    .references(() => reservations.id, { onDelete: "cascade" }),
+  guestId: varchar("guest_id")
+    .notNull()
+    .references(() => guests.id, { onDelete: "cascade" }),
+  totalRoomCharges: decimal("total_room_charges", { precision: 10, scale: 2 }).default("0"),
+  totalRoomServiceCharges: decimal("total_room_service_charges", { precision: 10, scale: 2 }).default("0"),
+  totalOtherCharges: decimal("total_other_charges", { precision: 10, scale: 2 }).default("0"),
+  totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).notNull(),
+  amountPaid: decimal("amount_paid", { precision: 10, scale: 2 }).default("0"),
+  remainingAmount: decimal("remaining_amount", { precision: 10, scale: 2 }).notNull(),
+  paymentStatus: varchar("payment_status").default("pending"), // pending, partial, paid
+  paymentMethod: varchar("payment_method"), // card, cash, room_charge, etc.
+  stripePaymentIntentId: varchar("stripe_payment_intent_id"),
+  paymentNotes: text("payment_notes"),
+  lastUpdatedAt: timestamp("last_updated_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 // ========== RELATIONS ==========
 
 export const usersRelations = relations(users, ({ many }) => ({
@@ -436,6 +539,76 @@ export const roomServiceRequestsRelations = relations(roomServiceRequests, ({ on
   }),
 }));
 
+export const shopMenuItemsRelations = relations(shopMenuItems, ({ one, many }) => ({
+  property: one(properties, {
+    fields: [shopMenuItems.propertyId],
+    references: [properties.id],
+  }),
+  orderItems: many(guestOrderItems),
+}));
+
+export const guestOrdersRelations = relations(guestOrders, ({ one, many }) => ({
+  property: one(properties, {
+    fields: [guestOrders.propertyId],
+    references: [properties.id],
+  }),
+  reservation: one(reservations, {
+    fields: [guestOrders.reservationId],
+    references: [reservations.id],
+  }),
+  guest: one(guests, {
+    fields: [guestOrders.guestId],
+    references: [guests.id],
+  }),
+  room: one(rooms, {
+    fields: [guestOrders.roomId],
+    references: [rooms.id],
+  }),
+  orderItems: many(guestOrderItems),
+  messages: many(guestMessages),
+}));
+
+export const guestOrderItemsRelations = relations(guestOrderItems, ({ one }) => ({
+  order: one(guestOrders, {
+    fields: [guestOrderItems.orderId],
+    references: [guestOrders.id],
+  }),
+  menuItem: one(shopMenuItems, {
+    fields: [guestOrderItems.menuItemId],
+    references: [shopMenuItems.id],
+  }),
+}));
+
+export const guestMessagesRelations = relations(guestMessages, ({ one }) => ({
+  property: one(properties, {
+    fields: [guestMessages.propertyId],
+    references: [properties.id],
+  }),
+  reservation: one(reservations, {
+    fields: [guestMessages.reservationId],
+    references: [reservations.id],
+  }),
+  order: one(guestOrders, {
+    fields: [guestMessages.orderId],
+    references: [guestOrders.id],
+  }),
+}));
+
+export const guestBillingRelations = relations(guestBilling, ({ one }) => ({
+  property: one(properties, {
+    fields: [guestBilling.propertyId],
+    references: [properties.id],
+  }),
+  reservation: one(reservations, {
+    fields: [guestBilling.reservationId],
+    references: [reservations.id],
+  }),
+  guest: one(guests, {
+    fields: [guestBilling.guestId],
+    references: [guests.id],
+  }),
+}));
+
 // ========== ZODS SCHEMAS & TYPES ==========
 
 export const insertLicenseSchema = createInsertSchema(licenses).omit({
@@ -527,6 +700,84 @@ export const insertOtaConnectionSchema = createInsertSchema(otaConnections).omit
   updatedAt: true,
 });
 
+// Shop menu schemas
+export const insertShopMenuItemSchema = createInsertSchema(shopMenuItems).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  price: z.string().or(z.number()),
+});
+
+export const updateShopMenuItemSchema = z.object({
+  name: z.string().optional(),
+  description: z.string().optional(),
+  category: z.string().optional(),
+  price: z.string().or(z.number()).optional(),
+  image: z.string().optional(),
+  isAvailable: z.boolean().optional(),
+  preparationTime: z.number().optional(),
+  displayOrder: z.number().optional(),
+}).strict();
+
+// Guest order schemas
+export const insertGuestOrderSchema = z.object({
+  propertyId: z.string(),
+  reservationId: z.string(),
+  guestId: z.string(),
+  roomId: z.string(),
+  orderNumber: z.string(),
+  totalAmount: z.string().or(z.number()),
+  status: z.string().optional(),
+  specialInstructions: z.string().optional(),
+});
+
+export const insertGuestOrderItemSchema = z.object({
+  orderId: z.string(),
+  menuItemId: z.string(),
+  quantity: z.number(),
+  unitPrice: z.string().or(z.number()),
+  totalPrice: z.string().or(z.number()),
+  specialRequests: z.string().optional(),
+});
+
+// Guest message schemas
+export const insertGuestMessageSchema = z.object({
+  propertyId: z.string(),
+  reservationId: z.string(),
+  orderId: z.string().optional(),
+  senderId: z.string(),
+  recipientId: z.string().optional(),
+  message: z.string(),
+  messageType: z.string().optional(),
+});
+
+// Guest billing schemas
+export const insertGuestBillingSchema = z.object({
+  propertyId: z.string(),
+  reservationId: z.string(),
+  guestId: z.string(),
+  totalRoomCharges: z.string().or(z.number()).optional(),
+  totalRoomServiceCharges: z.string().or(z.number()).optional(),
+  totalOtherCharges: z.string().or(z.number()).optional(),
+  totalAmount: z.string().or(z.number()),
+  amountPaid: z.string().or(z.number()).optional(),
+  remainingAmount: z.string().or(z.number()),
+  paymentStatus: z.string().optional(),
+  paymentMethod: z.string().optional(),
+  stripePaymentIntentId: z.string().optional(),
+  paymentNotes: z.string().optional(),
+});
+
+export const updateGuestBillingSchema = z.object({
+  amountPaid: z.string().or(z.number()).optional(),
+  remainingAmount: z.string().or(z.number()).optional(),
+  paymentStatus: z.string().optional(),
+  paymentMethod: z.string().optional(),
+  stripePaymentIntentId: z.string().optional(),
+  paymentNotes: z.string().optional(),
+}).strict();
+
 // Auth schemas
 export const signupSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -567,3 +818,15 @@ export type InsertOtaConnection = z.infer<typeof insertOtaConnectionSchema>;
 export type OtaConnection = typeof otaConnections.$inferSelect;
 export type AiForecast = typeof aiForecasts.$inferSelect;
 export type PricingRecommendation = typeof pricingRecommendations.$inferSelect;
+export type InsertShopMenuItem = z.infer<typeof insertShopMenuItemSchema>;
+export type ShopMenuItem = typeof shopMenuItems.$inferSelect;
+export type UpdateShopMenuItem = z.infer<typeof updateShopMenuItemSchema>;
+export type InsertGuestOrder = z.infer<typeof insertGuestOrderSchema>;
+export type GuestOrder = typeof guestOrders.$inferSelect;
+export type InsertGuestOrderItem = z.infer<typeof insertGuestOrderItemSchema>;
+export type GuestOrderItem = typeof guestOrderItems.$inferSelect;
+export type InsertGuestMessage = z.infer<typeof insertGuestMessageSchema>;
+export type GuestMessage = typeof guestMessages.$inferSelect;
+export type InsertGuestBilling = z.infer<typeof insertGuestBillingSchema>;
+export type GuestBilling = typeof guestBilling.$inferSelect;
+export type UpdateGuestBilling = z.infer<typeof updateGuestBillingSchema>;
