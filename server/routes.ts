@@ -587,6 +587,37 @@ app.get("/api/auth/user", isAuthenticated, async (req, res) => {
 
   // ========== RESERVATION ROUTES ==========
   
+  app.post("/api/reservations/check-availability", isAuthenticated, async (req, res) => {
+    try {
+      const { propertyId, roomTypeId, checkInDate, checkOutDate } = req.body;
+      
+      if (!propertyId || !roomTypeId || !checkInDate || !checkOutDate) {
+        return res.status(400).json({ message: "propertyId, roomTypeId, checkInDate, and checkOutDate are required" });
+      }
+
+      // Validate dates
+      const checkIn = new Date(checkInDate);
+      const checkOut = new Date(checkOutDate);
+      
+      if (checkIn >= checkOut) {
+        return res.status(400).json({ message: "Check-out date must be after check-in date" });
+      }
+
+      const availableRooms = await storage.checkRoomAvailability(propertyId, roomTypeId, checkInDate, checkOutDate);
+      
+      res.json({
+        available: availableRooms.length > 0,
+        availableRooms,
+        message: availableRooms.length > 0 
+          ? `${availableRooms.length} room(s) available` 
+          : "No rooms available for selected dates"
+      });
+    } catch (error: any) {
+      console.error("Error checking room availability:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+  
   app.get("/api/reservations", isAuthenticated, async (req, res) => {
     try {
       const propertyId = req.query.propertyId as string;
@@ -647,11 +678,22 @@ app.get("/api/auth/user", isAuthenticated, async (req, res) => {
   app.delete("/api/reservations/:id", isAuthenticated, async (req, res) => {
     try {
       const { id } = req.params;
-      const success = await storage.deleteReservation(id);
-      if (!success) {
+      
+      // Get the reservation first to update room status
+      const reservation = await storage.getReservation(id);
+      if (!reservation) {
         return res.status(404).json({ message: "Reservation not found" });
       }
-      res.json({ message: "Reservation deleted successfully" });
+
+      // Update reservation status to cancelled and room status to available
+      await storage.updateReservation(id, { status: "cancelled" });
+      
+      // If room is assigned, mark it as available
+      if (reservation.roomId) {
+        await storage.updateRoom(reservation.roomId, { status: "available" });
+      }
+
+      res.json({ message: "Reservation cancelled successfully" });
     } catch (error: any) {
       console.error("Error deleting reservation:", error);
       res.status(500).json({ message: error.message });

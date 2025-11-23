@@ -8,7 +8,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { signupSchema } from "@shared/schema";
+import { signupSchema } from "../../../shared/schema";
 
 const signupFormSchema = signupSchema.extend({
   confirmPassword: z.string().min(1, "Please confirm your password"),

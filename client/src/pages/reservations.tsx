@@ -43,7 +43,7 @@ import {
 import { Calendar as CalendarIcon, Plus, Search, Filter } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { insertReservationSchema, type Reservation, type Guest, type RoomType } from "@shared/schema";
+import { insertReservationSchema, type Reservation, type Guest, type RoomType } from "../../../shared/schema";
 import { z } from "zod";
 import { format } from "date-fns";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -53,11 +53,31 @@ const reservationFormSchema = insertReservationSchema.extend({
   guestName: z.string().optional(),
 });
 
+// Helper function to calculate nights
+function calculateNights(checkIn: string | undefined, checkOut: string | undefined): number {
+  if (!checkIn || !checkOut) return 0;
+  
+  const checkInDate = new Date(checkIn);
+  const checkOutDate = new Date(checkOut);
+  
+  checkInDate.setHours(0, 0, 0, 0);
+  checkOutDate.setHours(0, 0, 0, 0);
+  
+  const timeDiff = checkOutDate.getTime() - checkInDate.getTime();
+  const nights = Math.ceil(timeDiff / (1000 * 60 * 60 * 24));
+  
+  return Math.max(0, nights);
+}
+
 export default function Reservations() {
   const { toast } = useToast();
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const [isNewDialogOpen, setIsNewDialogOpen] = useState(false);
+  const [calculatedNights, setCalculatedNights] = useState(0);
+  const [calculatedTotal, setCalculatedTotal] = useState(0);
+  const [availableRooms, setAvailableRooms] = useState<number>(0);
+  const [isCheckingAvailability, setIsCheckingAvailability] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -74,6 +94,11 @@ export default function Reservations() {
 
   const { data: reservations, isLoading } = useQuery<(Reservation & { guest: Guest; roomType: RoomType })[]>({
     queryKey: ["/api/reservations"],
+    enabled: isAuthenticated,
+  });
+
+  const { data: properties } = useQuery<any[]>({
+    queryKey: ["/api/properties"],
     enabled: isAuthenticated,
   });
 
@@ -95,6 +120,58 @@ export default function Reservations() {
       bookingSource: "direct",
     },
   });
+
+  // Watch for date and rate changes to auto-calculate
+  const watchCheckIn = form.watch("checkInDate");
+  const watchCheckOut = form.watch("checkOutDate");
+  const watchRatePerNight = form.watch("ratePerNight");
+  const watchPropertyId = form.watch("propertyId");
+  const watchRoomTypeId = form.watch("roomTypeId");
+
+  useEffect(() => {
+    const nights = calculateNights(watchCheckIn, watchCheckOut);
+    setCalculatedNights(nights);
+
+    if (watchRatePerNight && nights > 0) {
+      const rate = parseFloat(watchRatePerNight.toString());
+      const total = rate * nights;
+      setCalculatedTotal(total);
+      form.setValue("totalAmount", total as any);
+    } else {
+      setCalculatedTotal(0);
+    }
+  }, [watchCheckIn, watchCheckOut, watchRatePerNight, form]);
+
+  // Check room availability when dates are selected
+  useEffect(() => {
+    const checkAvailability = async () => {
+      if (!watchPropertyId || !watchRoomTypeId || !watchCheckIn || !watchCheckOut) {
+        setAvailableRooms(0);
+        return;
+      }
+
+      setIsCheckingAvailability(true);
+      try {
+        const response = await apiRequest("POST", "/api/reservations/check-availability", {
+          propertyId: watchPropertyId,
+          roomTypeId: watchRoomTypeId,
+          checkInDate: watchCheckIn,
+          checkOutDate: watchCheckOut,
+        });
+
+        if (response.availableRooms) {
+          setAvailableRooms(response.availableRooms.length);
+        }
+      } catch (error) {
+        console.error("Error checking availability:", error);
+        setAvailableRooms(0);
+      } finally {
+        setIsCheckingAvailability(false);
+      }
+    };
+
+    checkAvailability();
+  }, [watchPropertyId, watchRoomTypeId, watchCheckIn, watchCheckOut]);
 
   const createMutation = useMutation({
     mutationFn: async (data: z.infer<typeof reservationFormSchema>) => {
@@ -172,6 +249,31 @@ export default function Reservations() {
             </DialogHeader>
             <Form {...form}>
               <form onSubmit={form.handleSubmit((data) => createMutation.mutate(data))} className="space-y-4">
+                <FormField
+                  control={form.control}
+                  name="propertyId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Property *</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-property">
+                            <SelectValue placeholder="Select a property" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {properties?.map((property) => (
+                            <SelectItem key={property.id} value={property.id}>
+                              {property.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
                 <FormField
                   control={form.control}
                   name="guestId"
@@ -252,6 +354,28 @@ export default function Reservations() {
                   />
                 </div>
 
+                {calculatedNights > 0 && (
+                  <div className="bg-blue-50 border border-blue-200 rounded p-3 text-sm">
+                    <p className="font-semibold text-blue-900">
+                      {calculatedNights} night{calculatedNights !== 1 ? 's' : ''}
+                    </p>
+                  </div>
+                )}
+
+                {availableRooms > 0 && (
+                  <div className="bg-green-50 border border-green-200 rounded p-3 text-sm">
+                    <p className="font-semibold text-green-900">
+                      ✓ {availableRooms} room{availableRooms !== 1 ? 's' : ''} available for selected dates
+                    </p>
+                  </div>
+                )}
+
+                {isCheckingAvailability && (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded p-3 text-sm">
+                    <p className="text-yellow-900">Checking availability...</p>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-2 gap-4">
                   <FormField
                     control={form.control}
@@ -298,14 +422,23 @@ export default function Reservations() {
                   name="totalAmount"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Total Amount *</FormLabel>
+                      <FormLabel>Total Amount * (Auto-calculated)</FormLabel>
                       <FormControl>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          {...field}
-                          data-testid="input-total"
-                        />
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="number"
+                            step="0.01"
+                            {...field}
+                            disabled
+                            data-testid="input-total"
+                            className="bg-gray-50"
+                          />
+                          {calculatedTotal > 0 && (
+                            <span className="font-semibold text-green-600 whitespace-nowrap">
+                              = ${calculatedTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                          )}
+                        </div>
                       </FormControl>
                       <FormMessage />
                     </FormItem>

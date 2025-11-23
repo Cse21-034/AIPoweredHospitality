@@ -8,7 +8,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { loginSchema } from "@shared/schema";
+import { loginSchema } from "../../../shared/schema";
 
 type LoginFormData = z.infer<typeof loginSchema>;
 

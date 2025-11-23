@@ -46,7 +46,7 @@ import { Users, Plus, Search, Mail, Phone, Flag, User, Calendar, MapPin, FileTex
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { insertGuestSchema, type Guest } from "@shared/schema";
+import { insertGuestSchema, type Guest } from "../../../shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 
 // Enhanced guest form schema with better validation

@@ -129,6 +129,81 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
+  // ========== HELPER FUNCTIONS ==========
+  
+  /**
+   * Calculate number of nights between check-in and check-out dates
+   */
+  private calculateNights(checkInDate: string | Date, checkOutDate: string | Date): number {
+    const checkIn = new Date(checkInDate);
+    const checkOut = new Date(checkOutDate);
+    
+    // Set time to midnight for accurate calculation
+    checkIn.setHours(0, 0, 0, 0);
+    checkOut.setHours(0, 0, 0, 0);
+    
+    const timeDiff = checkOut.getTime() - checkIn.getTime();
+    const nights = Math.ceil(timeDiff / (1000 * 60 * 60 * 24));
+    
+    return Math.max(1, nights); // Minimum 1 night
+  }
+
+  /**
+   * Calculate total cost based on rate per night and number of nights
+   */
+  private calculateTotalCost(ratePerNight: string | number, nights: number): string {
+    const rate = typeof ratePerNight === 'string' ? parseFloat(ratePerNight) : ratePerNight;
+    const total = rate * nights;
+    return total.toFixed(2);
+  }
+
+  /**
+   * Check if rooms are available for given dates and room type
+   */
+  async checkRoomAvailability(
+    propertyId: string,
+    roomTypeId: string,
+    checkInDate: string | Date,
+    checkOutDate: string | Date,
+    excludeReservationId?: string
+  ): Promise<Room[]> {
+    const checkIn = new Date(checkInDate).toISOString().split('T')[0];
+    const checkOut = new Date(checkOutDate).toISOString().split('T')[0];
+
+    // Get all rooms of this type
+    const roomsOfType = await db
+      .select()
+      .from(rooms)
+      .where(and(
+        eq(rooms.propertyId, propertyId),
+        eq(rooms.roomTypeId, roomTypeId)
+      ));
+
+    // Get conflicting reservations
+    let conflictQuery = db
+      .select()
+      .from(reservations)
+      .where(and(
+        eq(reservations.propertyId, propertyId),
+        eq(reservations.roomTypeId, roomTypeId),
+        sql`${reservations.checkInDate} < ${checkOut}`,
+        sql`${reservations.checkOutDate} > ${checkIn}`,
+        sql`${reservations.status} IN ('confirmed', 'checked_in')`
+      ));
+
+    if (excludeReservationId) {
+      conflictQuery = conflictQuery.where(sql`${reservations.id} != ${excludeReservationId}`);
+    }
+
+    const conflicts = await conflictQuery;
+    const bookedRoomIds = new Set(conflicts.map(r => r.roomId).filter(Boolean));
+
+    // Return available rooms (not in conflicts and available status)
+    return roomsOfType.filter(r => 
+      !bookedRoomIds.has(r.id) && r.status === 'available'
+    );
+  }
+
   // User operations (required for Replit Auth)
   async getUser(id: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));
@@ -382,14 +457,56 @@ async deleteRoomServiceRequest(id: string): Promise<boolean> {
   }
 
   async createReservation(reservationData: InsertReservation): Promise<Reservation> {
-    const [reservation] = await db.insert(reservations).values(reservationData).returning();
+    // Auto-calculate nights and total amount
+    const nights = this.calculateNights(reservationData.checkInDate, reservationData.checkOutDate);
+    const totalAmount = this.calculateTotalCost(reservationData.ratePerNight, nights);
+
+    // Prepare reservation data with auto-calculated values
+    const reservationToInsert = {
+      ...reservationData,
+      totalAmount: totalAmount,
+    };
+
+    const [reservation] = await db.insert(reservations).values(reservationToInsert).returning();
+
+    // Auto-update room status to 'blocked' if a specific room was assigned
+    if (reservation.roomId) {
+      await this.updateRoom(reservation.roomId, { status: 'blocked' });
+    }
+
     return reservation;
   }
 
   async updateReservation(id: string, data: Partial<InsertReservation>): Promise<Reservation> {
+    // Get current reservation to manage room status
+    const currentReservation = await this.getReservation(id);
+    if (!currentReservation) {
+      throw new Error("Reservation not found");
+    }
+
+    // If check-in/out dates changed, recalculate total amount
+    let updateData = { ...data };
+    if (data.checkInDate || data.checkOutDate) {
+      const checkInDate = data.checkInDate || currentReservation.checkInDate;
+      const checkOutDate = data.checkOutDate || currentReservation.checkOutDate;
+      const nights = this.calculateNights(checkInDate, checkOutDate);
+      const ratePerNight = data.ratePerNight || currentReservation.ratePerNight;
+      updateData.totalAmount = this.calculateTotalCost(ratePerNight, nights) as any;
+    }
+
+    // If status changes to checked_out or cancelled, mark room as available
+    if (data.status && (data.status === 'checked_out' || data.status === 'cancelled') && currentReservation.roomId) {
+      await this.updateRoom(currentReservation.roomId, { status: 'available' });
+    }
+
+    // If status changes to checked_in, mark room as occupied
+    if (data.status === 'checked_in' && currentReservation.roomId) {
+      await this.updateRoom(currentReservation.roomId, { status: 'occupied' });
+    }
+
     const [reservation] = await db
       .update(reservations)
-      .set({ ...data, updatedAt: new Date() })
+      .set({ ...updateData, updatedAt: new Date() })
       .where(eq(reservations.id, id))
       .returning();
     return reservation;
