@@ -25,6 +25,7 @@ import Subscription from "@/pages/subscription";
 import Settings from "@/pages/settings";
 import ShopMenu from "@/pages/shop-menu";
 import RoomServicePortal from "@/pages/room-service-portal";
+import GuestRoomService from "@/pages/qr-room-service";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -48,6 +49,7 @@ function Router() {
           <Route path="/room-service" component={RoomService} />
           <Route path="/shop-menu" component={ShopMenu} />
           <Route path="/room-service-portal/:reservationId" component={RoomServicePortal} />
+          <Route path="/room-service/:reservationId" component={GuestRoomService} />
           <Route path="/rates" component={Rates} />
           <Route path="/analytics" component={Analytics} />
           <Route path="/subscription" component={Subscription} />

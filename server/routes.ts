@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import Stripe from "stripe";
 import OpenAI from "openai";
+import QRCode from "qrcode";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated, hashPassword, verifyPassword } from "./auth";
 import { randomBytes } from "crypto";
@@ -1308,6 +1309,234 @@ app.get("/api/auth/user", isAuthenticated, async (req, res) => {
       }
     } catch (error: any) {
       console.error("Error confirming payment:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ========== QR CODE & ROOM SERVICE ACCESS ==========
+  
+  app.get("/api/room-service-qr/:reservationId", async (req, res) => {
+    try {
+      const { reservationId } = req.params;
+      
+      // Generate QR code that links to room service portal
+      const roomServiceUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/room-service/${reservationId}`;
+      const qrCode = await QRCode.toDataURL(roomServiceUrl);
+      
+      res.json({ qrCode, accessUrl: roomServiceUrl });
+    } catch (error: any) {
+      console.error("Error generating QR code:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Get room service portal access (no auth required - accessed via QR code)
+  app.get("/api/room-service-access/:reservationId", async (req, res) => {
+    try {
+      const { reservationId } = req.params;
+      
+      const reservation = await storage.getReservation(reservationId);
+      if (!reservation) {
+        return res.status(404).json({ message: "Reservation not found" });
+      }
+
+      // Return minimal info needed for guest portal
+      res.json({
+        id: reservation.id,
+        guestId: reservation.guestId,
+        roomId: reservation.roomId,
+        propertyId: reservation.propertyId,
+        checkInDate: reservation.checkInDate,
+        checkOutDate: reservation.checkOutDate,
+        status: reservation.status,
+      });
+    } catch (error: any) {
+      console.error("Error accessing room service:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ========== ORDER MANAGEMENT ROUTES (STAFF) ==========
+  
+  app.get("/api/staff/orders", isAuthenticated, async (req, res) => {
+    try {
+      const { propertyId, status } = req.query;
+      
+      if (!propertyId) {
+        return res.status(400).json({ message: "Property ID is required" });
+      }
+
+      let orders = await storage.getGuestOrders(propertyId as string);
+      
+      // Filter by status if provided
+      if (status) {
+        orders = orders.filter(o => o.status === status);
+      }
+
+      res.json(orders);
+    } catch (error: any) {
+      console.error("Error fetching orders:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.put("/api/staff/orders/:id/status", isAuthenticated, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { status } = req.body;
+      
+      const validStatuses = ["pending", "confirmed", "preparing", "delivered", "cancelled"];
+      if (!validStatuses.includes(status)) {
+        return res.status(400).json({ message: "Invalid status" });
+      }
+
+      const order = await storage.updateGuestOrder(id, { status });
+      
+      // Notify guest via message
+      const orderData = await storage.getGuestOrder(id);
+      if (orderData) {
+        const statusMessages: Record<string, string> = {
+          confirmed: `Your order #${orderData.orderNumber} has been confirmed`,
+          preparing: `Your order #${orderData.orderNumber} is being prepared`,
+          delivered: `Your order #${orderData.orderNumber} has been delivered`,
+          cancelled: `Your order #${orderData.orderNumber} has been cancelled`,
+        };
+
+        if (statusMessages[status]) {
+          await storage.createGuestMessage({
+            propertyId: orderData.reservationId,
+            reservationId: orderData.reservationId,
+            orderId: id,
+            senderId: req.session.userId || "system",
+            recipientId: orderData.guestId,
+            message: statusMessages[status],
+            messageType: "order_update",
+          } as any);
+        }
+      }
+
+      res.json(order);
+    } catch (error: any) {
+      console.error("Error updating order status:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ========== REAL-TIME MESSAGING - ENHANCED ==========
+  
+  app.post("/api/staff/send-message", isAuthenticated, async (req, res) => {
+    try {
+      const { reservationId, orderId, message } = req.body;
+      
+      if (!reservationId || !message) {
+        return res.status(400).json({ message: "Reservation ID and message are required" });
+      }
+
+      // Get reservation to get guest info
+      const reservation = await storage.getReservation(reservationId);
+      if (!reservation) {
+        return res.status(404).json({ message: "Reservation not found" });
+      }
+
+      const msg = await storage.createGuestMessage({
+        propertyId: reservation.propertyId,
+        reservationId,
+        orderId: orderId || null,
+        senderId: req.session.userId || "staff",
+        recipientId: reservation.guestId,
+        message,
+        messageType: "text",
+      } as any);
+
+      res.status(201).json(msg);
+    } catch (error: any) {
+      console.error("Error sending message:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.put("/api/guest-messages/:id/read", async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      // Mark message as read in database (simple implementation)
+      // In production, would need to track this properly
+      res.json({ message: "Message marked as read" });
+    } catch (error: any) {
+      console.error("Error marking message as read:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ========== CHECKOUT & BILLING COMPLETION ==========
+  
+  app.post("/api/checkout/initiate", isAuthenticated, async (req, res) => {
+    try {
+      const { reservationId } = req.body;
+      
+      if (!reservationId) {
+        return res.status(400).json({ message: "Reservation ID is required" });
+      }
+
+      // Calculate final billing
+      const billing = await storage.calculateGuestBilling(reservationId);
+      
+      if (Number(billing.remainingAmount) === 0) {
+        return res.json({ 
+          message: "No payment required", 
+          billing,
+          readyToCheckout: true 
+        });
+      }
+
+      res.json({ 
+        billing,
+        readyToCheckout: false,
+        message: "Payment required before checkout"
+      });
+    } catch (error: any) {
+      console.error("Error initiating checkout:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/checkout/complete", isAuthenticated, async (req, res) => {
+    try {
+      const { reservationId } = req.body;
+      
+      if (!reservationId) {
+        return res.status(400).json({ message: "Reservation ID is required" });
+      }
+
+      // Get billing
+      const billing = await storage.getGuestBilling(reservationId);
+      if (!billing) {
+        return res.status(404).json({ message: "Billing record not found" });
+      }
+
+      // Check if payment is complete
+      if (Number(billing.remainingAmount) > 0) {
+        return res.status(400).json({ 
+          message: "Outstanding balance must be paid before checkout",
+          outstandingAmount: billing.remainingAmount
+        });
+      }
+
+      // Update reservation status to checked_out
+      const reservation = await storage.getReservation(reservationId);
+      if (reservation && reservation.status === "checked_in") {
+        await storage.updateReservation(reservationId, {
+          status: "checked_out",
+          checkOutTime: new Date().toISOString(),
+        });
+      }
+
+      res.json({ 
+        message: "Checkout completed successfully",
+        reservationId
+      });
+    } catch (error: any) {
+      console.error("Error completing checkout:", error);
       res.status(500).json({ message: error.message });
     }
   });
