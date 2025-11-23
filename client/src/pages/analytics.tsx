@@ -204,7 +204,7 @@ export default function Analytics() {
                     <span className="font-medium">Confirmed</span>
                   </div>
                   <Badge variant="default">
-                    {reservations?.filter(r => r.status === "confirmed").length || 0}
+                    {Array.isArray(reservations) ? reservations.filter(r => r.status === "confirmed").length : 0}
                   </Badge>
                 </div>
 
@@ -214,7 +214,7 @@ export default function Analytics() {
                     <span className="font-medium">Checked In</span>
                   </div>
                   <Badge variant="outline" className="bg-blue-50">
-                    {reservations?.filter(r => r.status === "checked_in").length || 0}
+                    {Array.isArray(reservations) ? reservations.filter(r => r.status === "checked_in").length : 0}
                   </Badge>
                 </div>
 
@@ -224,7 +224,7 @@ export default function Analytics() {
                     <span className="font-medium">Pending/No-show</span>
                   </div>
                   <Badge variant="outline" className="bg-orange-50">
-                    {reservations?.filter(r => r.status === "pending" || r.status === "no_show").length || 0}
+                    {Array.isArray(reservations) ? reservations.filter(r => r.status === "pending" || r.status === "no_show").length : 0}
                   </Badge>
                 </div>
               </>
