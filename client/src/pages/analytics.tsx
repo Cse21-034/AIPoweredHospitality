@@ -19,6 +19,7 @@ export default function Analytics() {
   const { toast } = useToast();
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const [selectedProperty, setSelectedProperty] = useState<string>("");
+  const [metrics, setMetrics] = useState({ totalRevenue: 0, avgNightlyRate: 0, bookingCount: 0 });
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -60,19 +61,19 @@ export default function Analytics() {
     },
   });
 
-  const calculateMetrics = () => {
-    if (!reservations) return { totalRevenue: 0, avgNightlyRate: 0, bookingCount: 0 };
+  useEffect(() => {
+    if (Array.isArray(reservations) && reservations.length > 0) {
+      const totalRevenue = reservations.reduce((sum, r) => sum + parseFloat(r.totalAmount || 0), 0);
+      const bookingCount = reservations.length;
+      const avgNightlyRate = bookingCount > 0 
+        ? reservations.reduce((sum, r) => sum + parseFloat(r.ratePerNight || 0), 0) / bookingCount 
+        : 0;
 
-    const totalRevenue = reservations.reduce((sum, r) => sum + parseFloat(r.totalAmount || 0), 0);
-    const bookingCount = reservations.length;
-    const avgNightlyRate = bookingCount > 0 
-      ? reservations.reduce((sum, r) => sum + parseFloat(r.ratePerNight || 0), 0) / bookingCount 
-      : 0;
-
-    return { totalRevenue, avgNightlyRate, bookingCount };
-  };
-
-  const metrics = calculateMetrics();
+      setMetrics({ totalRevenue, avgNightlyRate, bookingCount });
+    } else {
+      setMetrics({ totalRevenue: 0, avgNightlyRate: 0, bookingCount: 0 });
+    }
+  }, [reservations]);
 
   if (authLoading) {
     return (
