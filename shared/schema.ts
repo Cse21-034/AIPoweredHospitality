@@ -477,6 +477,8 @@ export const insertReservationSchema = createInsertSchema(reservations)
   .extend({
     checkInDate: z.string().or(z.date()),
     checkOutDate: z.string().or(z.date()),
+    ratePerNight: z.string().or(z.number()),
+    totalAmount: z.string().or(z.number()),
   })
   .refine(
     (data) => new Date(data.checkInDate) < new Date(data.checkOutDate),

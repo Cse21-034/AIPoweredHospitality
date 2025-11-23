@@ -129,6 +129,16 @@ export default function Reservations() {
   const watchPropertyId = form.watch("propertyId");
   const watchRoomTypeId = form.watch("roomTypeId");
 
+  // Auto-fill ratePerNight from selected room type
+  useEffect(() => {
+    if (watchRoomTypeId && roomTypes) {
+      const selectedType = roomTypes.find(rt => rt.id === watchRoomTypeId);
+      if (selectedType) {
+        form.setValue("ratePerNight", selectedType.baseRate.toString());
+      }
+    }
+  }, [watchRoomTypeId, roomTypes, form]);
+
   useEffect(() => {
     const nights = calculateNights(watchCheckIn, watchCheckOut);
     setCalculatedNights(nights);
@@ -137,7 +147,7 @@ export default function Reservations() {
       const rate = parseFloat(watchRatePerNight.toString());
       const total = rate * nights;
       setCalculatedTotal(total);
-      form.setValue("totalAmount", total as any);
+      form.setValue("totalAmount", total.toFixed(2));
     } else {
       setCalculatedTotal(0);
     }
@@ -403,13 +413,16 @@ export default function Reservations() {
                     name="ratePerNight"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Rate per Night *</FormLabel>
+                        <FormLabel>Rate per Night * (Auto-filled)</FormLabel>
                         <FormControl>
                           <Input
                             type="number"
                             step="0.01"
                             {...field}
+                            disabled
                             data-testid="input-rate"
+                            className="bg-gray-50"
+                            value={field.value || ''}
                           />
                         </FormControl>
                         <FormMessage />
