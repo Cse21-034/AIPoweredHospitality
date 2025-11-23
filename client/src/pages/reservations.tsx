@@ -49,9 +49,10 @@ import { format } from "date-fns";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 
-const reservationFormSchema = insertReservationSchema.extend({
+// Create form schema with optional guest name
+const reservationFormSchema = insertReservationSchema.and(z.object({
   guestName: z.string().optional(),
-});
+}));
 
 // Helper function to calculate nights
 function calculateNights(checkIn: string | undefined, checkOut: string | undefined): number {

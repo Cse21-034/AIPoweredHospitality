@@ -468,17 +468,23 @@ export const insertGuestSchema = createInsertSchema(guests).omit({
   updatedAt: true,
 });
 
-export const insertReservationSchema = createInsertSchema(reservations).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-}).refine(
-  (data) => new Date(data.checkInDate) < new Date(data.checkOutDate),
-  {
-    message: "Check-out date must be after check-in date",
-    path: ["checkOutDate"],
-  }
-);
+export const insertReservationSchema = createInsertSchema(reservations)
+  .omit({
+    id: true,
+    createdAt: true,
+    updatedAt: true,
+  })
+  .extend({
+    checkInDate: z.string().or(z.date()),
+    checkOutDate: z.string().or(z.date()),
+  })
+  .refine(
+    (data) => new Date(data.checkInDate) < new Date(data.checkOutDate),
+    {
+      message: "Check-out date must be after check-in date",
+      path: ["checkOutDate"],
+    }
+  );
 
 export const insertRoomServiceCategorySchema = createInsertSchema(roomServiceCategories).omit({
   id: true,
