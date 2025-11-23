@@ -11,6 +11,7 @@ import {
   Key,
   LogOut,
   Pizza,
+  FileText,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
@@ -65,6 +66,12 @@ const menuItems = [
     url: "/shop-menu",
     icon: Pizza,
     testId: "nav-shop-menu",
+  },
+  {
+    title: "Guest Billing",
+    url: "/guest-billing",
+    icon: FileText,
+    testId: "nav-guest-billing",
   },
   {
     title: "Rate Management",

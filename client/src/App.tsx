@@ -1,5 +1,5 @@
 // Following javascript_log_in_with_replit blueprint and design_guidelines.md
-import { Switch, Route } from "wouter";
+import { Switch, Route, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -24,38 +24,47 @@ import Analytics from "@/pages/analytics";
 import Subscription from "@/pages/subscription";
 import Settings from "@/pages/settings";
 import ShopMenu from "@/pages/shop-menu";
+import GuestBilling from "@/pages/guest-billing";
 import RoomServicePortal from "@/pages/room-service-portal";
 import GuestRoomService from "@/pages/qr-room-service";
 import NotFound from "@/pages/not-found";
 
-function Router() {
-  const { isAuthenticated, isLoading } = useAuth();
-
+function AuthenticatedRouter() {
   return (
     <Switch>
-      {isLoading || !isAuthenticated ? (
-        <>
-          <Route path="/" component={Landing} />
-          <Route path="/login" component={Login} />
-          <Route path="/signup" component={Signup} />
-        </>
-      ) : (
-        <>
-          <Route path="/" component={Dashboard} />
-          <Route path="/dashboard" component={Dashboard} />
-          <Route path="/reservations" component={Reservations} />
-          <Route path="/guests" component={Guests} />
-          <Route path="/properties" component={Properties} />
-          <Route path="/room-service" component={RoomService} />
-          <Route path="/shop-menu" component={ShopMenu} />
-          <Route path="/room-service-portal/:reservationId" component={RoomServicePortal} />
-          <Route path="/room-service/:reservationId" component={GuestRoomService} />
-          <Route path="/rates" component={Rates} />
-          <Route path="/analytics" component={Analytics} />
-          <Route path="/subscription" component={Subscription} />
-          <Route path="/settings" component={Settings} />
-        </>
-      )}
+      <Route path="/" component={Dashboard} />
+      <Route path="/dashboard" component={Dashboard} />
+      <Route path="/reservations" component={Reservations} />
+      <Route path="/guests" component={Guests} />
+      <Route path="/properties" component={Properties} />
+      <Route path="/room-service" component={RoomService} />
+      <Route path="/shop-menu" component={ShopMenu} />
+      <Route path="/guest-billing" component={GuestBilling} />
+      <Route path="/room-service-portal/:reservationId" component={RoomServicePortal} />
+      <Route path="/rates" component={Rates} />
+      <Route path="/analytics" component={Analytics} />
+      <Route path="/subscription" component={Subscription} />
+      <Route path="/settings" component={Settings} />
+      <Route component={NotFound} />
+    </Switch>
+  );
+}
+
+function PublicRouter() {
+  return (
+    <Switch>
+      <Route path="/" component={Landing} />
+      <Route path="/login" component={Login} />
+      <Route path="/signup" component={Signup} />
+      <Route component={NotFound} />
+    </Switch>
+  );
+}
+
+function GuestPortalRouter() {
+  return (
+    <Switch>
+      <Route path="/room-service/:reservationId" component={GuestRoomService} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -63,6 +72,7 @@ function Router() {
 
 function AppContent() {
   const { isAuthenticated, isLoading } = useAuth();
+  const [location] = useLocation();
 
   // Following design_guidelines.md - sidebar width configuration
   const style = {
@@ -70,15 +80,39 @@ function AppContent() {
     "--sidebar-width-icon": "4rem", // default icon width
   };
 
-  if (isLoading || !isAuthenticated) {
+  // Check if on guest portal (no sidebar needed)
+  const isGuestPortal = location.startsWith("/room-service/") && location.split("/").length === 3;
+
+  if (isLoading) {
     return (
       <>
         <Toaster />
-        <Router />
+        <div className="flex items-center justify-center h-screen">Loading...</div>
       </>
     );
   }
 
+  // Guest portal - no sidebar, no auth required
+  if (isGuestPortal) {
+    return (
+      <>
+        <GuestPortalRouter />
+        <Toaster />
+      </>
+    );
+  }
+
+  // Not authenticated - show public pages
+  if (!isAuthenticated) {
+    return (
+      <>
+        <Toaster />
+        <PublicRouter />
+      </>
+    );
+  }
+
+  // Authenticated - show sidebar + protected pages
   return (
     <SidebarProvider style={style as React.CSSProperties}>
       <div className="flex h-screen w-full">
@@ -89,7 +123,7 @@ function AppContent() {
             <ThemeToggle />
           </header>
           <main className="flex-1 overflow-y-auto bg-background">
-            <Router />
+            <AuthenticatedRouter />
           </main>
         </div>
       </div>
