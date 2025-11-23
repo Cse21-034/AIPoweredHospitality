@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { ShoppingCart, Send, Clock, Check, X } from "lucide-react";
-import { queryClient } from "@/lib/queryClient";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 
 interface ShopMenuItem {
   id: string;
@@ -70,8 +70,7 @@ export default function RoomServicePortal({ params }: RoomServicePortalProps) {
   const { data: reservation } = useQuery({
     queryKey: [`/api/reservations/${reservationId}`],
     queryFn: async () => {
-      const res = await fetch(`/api/reservations/${reservationId}`);
-      if (!res.ok) throw new Error("Failed to fetch reservation");
+      const res = await apiRequest("GET", `/api/reservations/${reservationId}`);
       return res.json();
     },
   });
@@ -84,8 +83,7 @@ export default function RoomServicePortal({ params }: RoomServicePortalProps) {
     queryKey: [`/api/shop-menu?propertyId=${propertyId}`],
     queryFn: async () => {
       if (!propertyId) return [];
-      const res = await fetch(`/api/shop-menu?propertyId=${propertyId}`);
-      if (!res.ok) throw new Error("Failed to fetch menu");
+      const res = await apiRequest("GET", `/api/shop-menu?propertyId=${propertyId}`);
       return res.json();
     },
     enabled: !!propertyId,
@@ -95,8 +93,7 @@ export default function RoomServicePortal({ params }: RoomServicePortalProps) {
   const { data: orders = [], refetch: refetchOrders } = useQuery({
     queryKey: [`/api/guest-orders?reservationId=${reservationId}`],
     queryFn: async () => {
-      const res = await fetch(`/api/guest-orders?reservationId=${reservationId}`);
-      if (!res.ok) throw new Error("Failed to fetch orders");
+      const res = await apiRequest("GET", `/api/guest-orders?reservationId=${reservationId}`);
       return res.json();
     },
   });
@@ -105,8 +102,7 @@ export default function RoomServicePortal({ params }: RoomServicePortalProps) {
   const { data: messages = [], refetch: refetchMessages } = useQuery({
     queryKey: [`/api/guest-messages?reservationId=${reservationId}`],
     queryFn: async () => {
-      const res = await fetch(`/api/guest-messages?reservationId=${reservationId}`);
-      if (!res.ok) throw new Error("Failed to fetch messages");
+      const res = await apiRequest("GET", `/api/guest-messages?reservationId=${reservationId}`);
       return res.json();
     },
     refetchInterval: 3000, // Refresh every 3 seconds
@@ -116,8 +112,7 @@ export default function RoomServicePortal({ params }: RoomServicePortalProps) {
   const { data: billing } = useQuery({
     queryKey: [`/api/guest-billing/${reservationId}`],
     queryFn: async () => {
-      const res = await fetch(`/api/guest-billing/${reservationId}`);
-      if (!res.ok) throw new Error("Failed to fetch billing");
+      const res = await apiRequest("GET", `/api/guest-billing/${reservationId}`);
       return res.json();
     },
   });
@@ -132,36 +127,27 @@ export default function RoomServicePortal({ params }: RoomServicePortalProps) {
       const totalAmount = cart.reduce((sum, item) => sum + (Number(item.item?.price) * item.quantity), 0);
       const orderNumber = `ORD-${Date.now()}`;
 
-      const res = await fetch("/api/guest-orders", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          propertyId,
-          reservationId,
-          guestId: reservation?.guestId,
-          roomId: reservation?.roomId,
-          orderNumber,
-          totalAmount: totalAmount.toString(),
-          specialInstructions,
-          status: "pending",
-        }),
+      const res = await apiRequest("POST", "/api/guest-orders", {
+        propertyId,
+        reservationId,
+        guestId: reservation?.guestId,
+        roomId: reservation?.roomId,
+        orderNumber,
+        totalAmount: totalAmount.toString(),
+        specialInstructions,
+        status: "pending",
       });
 
-      if (!res.ok) throw new Error("Failed to create order");
       const order = await res.json();
 
       // Add order items
       for (const cartItem of cart) {
         const itemTotal = Number(cartItem.item?.price) * cartItem.quantity;
-        await fetch(`/api/guest-orders/${order.id}/items`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            menuItemId: cartItem.menuItemId,
-            quantity: cartItem.quantity,
-            unitPrice: cartItem.item?.price,
-            totalPrice: itemTotal,
-          }),
+        await apiRequest("POST", `/api/guest-orders/${order.id}/items`, {
+          menuItemId: cartItem.menuItemId,
+          quantity: cartItem.quantity,
+          unitPrice: cartItem.item?.price,
+          totalPrice: itemTotal,
         });
       }
 
@@ -189,20 +175,15 @@ export default function RoomServicePortal({ params }: RoomServicePortalProps) {
   // Send message mutation
   const sendMessageMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch("/api/guest-messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          propertyId,
-          reservationId,
-          orderId: selectedOrderId || null,
-          senderId: reservation?.guestId,
-          message: messageText,
-          messageType: "text",
-        }),
+      const res = await apiRequest("POST", "/api/guest-messages", {
+        propertyId,
+        reservationId,
+        orderId: selectedOrderId || null,
+        senderId: reservation?.guestId,
+        message: messageText,
+        messageType: "text",
       });
 
-      if (!res.ok) throw new Error("Failed to send message");
       return res.json();
     },
     onSuccess: () => {

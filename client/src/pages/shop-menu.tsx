@@ -17,7 +17,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Trash2, Plus, Edit2 } from "lucide-react";
-import { queryClient } from "@/lib/queryClient";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 
 interface ShopMenuItem {
   id: string;
@@ -51,8 +51,7 @@ export default function ShopMenuPage() {
   const { data: properties = [] } = useQuery({
     queryKey: ["/api/properties"],
     queryFn: async () => {
-      const res = await fetch("/api/properties");
-      if (!res.ok) throw new Error("Failed to fetch properties");
+      const res = await apiRequest("GET", "/api/properties");
       return res.json();
     },
   });
@@ -62,8 +61,7 @@ export default function ShopMenuPage() {
     queryKey: [`/api/shop-menu?propertyId=${propertyId}`],
     queryFn: async () => {
       if (!propertyId) return [];
-      const res = await fetch(`/api/shop-menu?propertyId=${propertyId}`);
-      if (!res.ok) throw new Error("Failed to fetch menu items");
+      const res = await apiRequest("GET", `/api/shop-menu?propertyId=${propertyId}`);
       return res.json();
     },
     enabled: !!propertyId,
@@ -75,17 +73,11 @@ export default function ShopMenuPage() {
       const url = editingItem ? `/api/shop-menu/${editingItem.id}` : "/api/shop-menu";
       const method = editingItem ? "PUT" : "POST";
 
-      const res = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...data,
-          propertyId,
-          displayOrder: editingItem?.displayOrder || 0,
-        }),
+      const res = await apiRequest(method, url, {
+        ...data,
+        propertyId,
+        displayOrder: editingItem?.displayOrder || 0,
       });
-
-      if (!res.ok) throw new Error("Failed to save menu item");
       return res.json();
     },
     onSuccess: () => {
@@ -110,8 +102,7 @@ export default function ShopMenuPage() {
   // Delete mutation
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const res = await fetch(`/api/shop-menu/${id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error("Failed to delete menu item");
+      const res = await apiRequest("DELETE", `/api/shop-menu/${id}`);
       return res.json();
     },
     onSuccess: () => {
