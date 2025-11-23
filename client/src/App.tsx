@@ -25,6 +25,7 @@ import Subscription from "@/pages/subscription";
 import Settings from "@/pages/settings";
 import ShopMenu from "@/pages/shop-menu";
 import GuestBilling from "@/pages/guest-billing";
+import QRCodes from "@/pages/qr-codes";
 import RoomServicePortal from "@/pages/room-service-portal";
 import GuestRoomService from "@/pages/qr-room-service";
 import NotFound from "@/pages/not-found";
@@ -40,6 +41,7 @@ function AuthenticatedRouter() {
       <Route path="/room-service" component={RoomService} />
       <Route path="/shop-menu" component={ShopMenu} />
       <Route path="/guest-billing" component={GuestBilling} />
+      <Route path="/qr-codes" component={QRCodes} />
       <Route path="/room-service-portal/:reservationId" component={RoomServicePortal} />
       <Route path="/rates" component={Rates} />
       <Route path="/analytics" component={Analytics} />

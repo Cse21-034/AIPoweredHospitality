@@ -12,6 +12,7 @@ import {
   LogOut,
   Pizza,
   FileText,
+  QrCode,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
@@ -66,6 +67,12 @@ const menuItems = [
     url: "/shop-menu",
     icon: Pizza,
     testId: "nav-shop-menu",
+  },
+  {
+    title: "QR Codes",
+    url: "/qr-codes",
+    icon: QrCode,
+    testId: "nav-qr-codes",
   },
   {
     title: "Guest Billing",
