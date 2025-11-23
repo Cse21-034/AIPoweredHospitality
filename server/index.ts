@@ -142,8 +142,9 @@ app.use((req, res, next) => {
   }
 
   const port = parseInt(process.env.PORT || '5000', 10);
-  server.listen(port, "127.0.0.1", () => {
-    log(`🚀 Server listening on http://127.0.0.1:${port}`);
+  const host = isDevelopment ? "127.0.0.1" : "0.0.0.0";
+  server.listen(port, host, () => {
+    log(`🚀 Server listening on http://${host}:${port}`);
     log(`📍 Environment: ${isDevelopment ? "development" : "production"}`);
     log(`🌐 CORS origins: ${allowedOrigins.join(", ")}`);
     log(`🔐 Frontend: ${frontendOrigin}`);
