@@ -217,6 +217,52 @@ export default function Reservations() {
     },
   });
 
+  const checkInMutation = useMutation({
+    mutationFn: async (reservationId: string) => {
+      await apiRequest("PUT", `/api/reservations/${reservationId}`, {
+        status: "checked_in",
+        checkInTime: new Date().toISOString(),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/reservations"] });
+      toast({
+        title: "Success",
+        description: "Guest checked in successfully",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const checkOutMutation = useMutation({
+    mutationFn: async (reservationId: string) => {
+      await apiRequest("PUT", `/api/reservations/${reservationId}`, {
+        status: "checked_out",
+        checkOutTime: new Date().toISOString(),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/reservations"] });
+      toast({
+        title: "Success",
+        description: "Guest checked out successfully",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   const filteredReservations = reservations?.filter((reservation) =>
     `${reservation.guest.firstName} ${reservation.guest.lastName} ${reservation.id}`
       .toLowerCase()
@@ -532,6 +578,7 @@ export default function Reservations() {
                 <TableHead>Check-out</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Amount</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -553,11 +600,37 @@ export default function Reservations() {
                     <TableCell className="text-right font-medium">
                       ${Number(reservation.totalAmount).toLocaleString()}
                     </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex gap-2 justify-end">
+                        {reservation.status === "confirmed" && (
+                          <Button
+                            size="sm"
+                            variant="default"
+                            onClick={() => checkInMutation.mutate(reservation.id)}
+                            disabled={checkInMutation.isPending}
+                            className="bg-green-600 hover:bg-green-700"
+                          >
+                            Check-in
+                          </Button>
+                        )}
+                        {reservation.status === "checked_in" && (
+                          <Button
+                            size="sm"
+                            variant="default"
+                            onClick={() => checkOutMutation.mutate(reservation.id)}
+                            disabled={checkOutMutation.isPending}
+                            className="bg-blue-600 hover:bg-blue-700"
+                          >
+                            Check-out
+                          </Button>
+                        )}
+                      </div>
+                    </TableCell>
                   </TableRow>
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                     {searchQuery ? "No reservations found matching your search" : "No reservations yet. Create your first one!"}
                   </TableCell>
                 </TableRow>
