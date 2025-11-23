@@ -45,7 +45,7 @@ export default function Analytics() {
     }
   }, [properties, selectedProperty]);
 
-  const { data: stats, isLoading } = useQuery<any>({
+  const { data: stats } = useQuery<any>({
     queryKey: ["/api/dashboard-stats", selectedProperty],
     enabled: isAuthenticated && !!selectedProperty,
     queryFn: async () => {
@@ -53,7 +53,7 @@ export default function Analytics() {
     },
   });
 
-  const { data: reservations } = useQuery<any[]>({
+  const { data: reservations, isLoading } = useQuery<any[]>({
     queryKey: ["/api/reservations", selectedProperty],
     enabled: isAuthenticated && !!selectedProperty,
     queryFn: async () => {
@@ -69,8 +69,10 @@ export default function Analytics() {
         ? reservations.reduce((sum, r) => sum + parseFloat(r.ratePerNight || 0), 0) / bookingCount 
         : 0;
 
+      console.log("Analytics metrics calculated:", { totalRevenue, avgNightlyRate, bookingCount, reservationsCount: reservations.length });
       setMetrics({ totalRevenue, avgNightlyRate, bookingCount });
     } else {
+      console.log("No reservations data or empty:", reservations);
       setMetrics({ totalRevenue: 0, avgNightlyRate: 0, bookingCount: 0 });
     }
   }, [reservations]);
