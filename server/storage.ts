@@ -494,6 +494,14 @@ async deleteRoomServiceRequest(id: string): Promise<boolean> {
       updateData.totalAmount = this.calculateTotalCost(ratePerNight, nights) as any;
     }
 
+    // Convert checkInTime and checkOutTime strings to Date objects if provided
+    if (updateData.checkInTime && typeof updateData.checkInTime === 'string') {
+      updateData.checkInTime = new Date(updateData.checkInTime) as any;
+    }
+    if (updateData.checkOutTime && typeof updateData.checkOutTime === 'string') {
+      updateData.checkOutTime = new Date(updateData.checkOutTime) as any;
+    }
+
     // If status changes to checked_out or cancelled, mark room as available
     if (data.status && (data.status === 'checked_out' || data.status === 'cancelled') && currentReservation.roomId) {
       await this.updateRoom(currentReservation.roomId, { status: 'available' });
