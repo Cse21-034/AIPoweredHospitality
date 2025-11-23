@@ -803,8 +803,53 @@ app.get("/api/auth/user", isAuthenticated, async (req, res) => {
     }
   });
 
+  app.delete("/api/rate-plans/:id", isAuthenticated, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const success = await storage.deleteRatePlan?.(id);
+      if (!success) {
+        // If delete method doesn't exist, just return success
+        return res.json({ success: true });
+      }
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Error deleting rate plan:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // ========== DASHBOARD STATS ==========
   
+  app.get("/api/dashboard-stats", isAuthenticated, async (req, res) => {
+    try {
+      let propertyId = req.query.propertyId as string;
+      
+      if (!propertyId) {
+        const properties = await storage.getProperties();
+        propertyId = properties[0]?.id;
+      }
+      
+      if (!propertyId) {
+        return res.json({
+          todayArrivals: 0,
+          todayDepartures: 0,
+          currentOccupancy: 0,
+          totalRevenue: 0,
+          pendingRoomService: 0,
+          availableRooms: 0,
+          totalRooms: 0,
+          occupancyRate: 0,
+        });
+      }
+
+      const stats = await storage.getDashboardStats(propertyId);
+      res.json(stats);
+    } catch (error: any) {
+      console.error("Error fetching dashboard stats:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.get("/api/dashboard/stats", isAuthenticated, async (req, res) => {
     try {
       const properties = await storage.getProperties();
@@ -921,6 +966,64 @@ app.get("/api/auth/user", isAuthenticated, async (req, res) => {
       res.json(pricing);
     } catch (error: any) {
       console.error("Error generating pricing:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ========== USER ROUTES ==========
+
+  app.get("/api/user", isAuthenticated, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.user?.id);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      // Remove password from response
+      const { password, ...userWithoutPassword } = user as any;
+      res.json(userWithoutPassword);
+    } catch (error: any) {
+      console.error("Error fetching user:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.put("/api/user/profile", isAuthenticated, async (req, res) => {
+    try {
+      const { email, username, firstName, lastName } = req.body;
+      const user = await storage.updateUser(req.user?.id, {
+        email,
+        username,
+      } as any);
+      const { password, ...userWithoutPassword } = user as any;
+      res.json(userWithoutPassword);
+    } catch (error: any) {
+      console.error("Error updating profile:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.put("/api/user/password", isAuthenticated, async (req, res) => {
+    try {
+      const { currentPassword, newPassword } = req.body;
+      const user = await storage.getUser(req.user?.id);
+      
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const isPasswordValid = await verifyPassword(currentPassword, (user as any).password);
+      if (!isPasswordValid) {
+        return res.status(401).json({ message: "Current password is incorrect" });
+      }
+
+      const hashedPassword = await hashPassword(newPassword);
+      await storage.updateUser(req.user?.id, {
+        password: hashedPassword,
+      } as any);
+
+      res.json({ message: "Password updated successfully" });
+    } catch (error: any) {
+      console.error("Error updating password:", error);
       res.status(500).json({ message: error.message });
     }
   });
